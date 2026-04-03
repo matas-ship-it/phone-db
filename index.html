@@ -360,7 +360,7 @@
         });
         const data = await resp.json();
         if (data.clients) {
-          clientsList = data.clients.filter(c => c.status === 'active');
+          clientsList = data.clients.filter(c => c.status !== 'churned');
           populateClientDropdowns();
         }
       } catch (err) {
@@ -377,7 +377,7 @@
         clientsList.forEach(c => {
           const opt = document.createElement('option');
           opt.value = c.slug;
-          opt.textContent = c.name;
+          opt.textContent = c.name + (c.status === 'paused' ? ' (paused)' : '');
           sel.appendChild(opt);
         });
         sel.value = currentVal;
