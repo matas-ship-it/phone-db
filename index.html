@@ -96,6 +96,21 @@
     .result-card .count.red { color: var(--red); }
     .result-card .count.yellow { color: var(--yellow); }
     .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .stats-dashboard { margin-bottom: 28px; }
+    .stats-dashboard h2 { font-size: 16px; color: var(--text-heading); margin-bottom: 14px; font-weight: 600; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+    .stat-card .stat-value { font-size: 24px; font-weight: 700; color: var(--text-heading); }
+    .stat-card .stat-value.accent { color: var(--accent); }
+    .stat-card .stat-value.green { color: var(--green); }
+    .stat-card .stat-value.yellow { color: var(--yellow); }
+    .stat-card .stat-value.red { color: var(--red); }
+    .stat-card .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .activity-feed { margin-top: 14px; }
+    .activity-feed h3 { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }
+    .activity-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 4px; font-size: 13px; }
+    .activity-item .activity-text { color: var(--text); }
+    .activity-item .activity-time { color: var(--text-faint); font-size: 11px; white-space: nowrap; margin-left: 12px; }
 
     .output-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 16px; background: var(--output-bg); border: 1px solid var(--output-border); border-radius: 8px; color: var(--green); text-decoration: none; font-size: 14px; }
     .output-link:hover { opacity: 0.9; }
@@ -139,7 +154,7 @@
         <span style="font-size:11px;">&#9660;</span> How it works
       </summary>
       <div style="margin-top:14px;font-size:13px;color:var(--details-text);line-height:1.7;">
-        <p style="margin-bottom:12px;">LLG has <strong style="color:var(--details-heading);">460,000+ contacts</strong> with phone numbers collected across all clients. Before you pay to enrich a new lead list, use this tool to check which contacts we already have numbers for &mdash; so you only enrich what's actually needed.</p>
+        <p style="margin-bottom:12px;">LLG has <strong style="color:var(--details-heading);" id="howItWorksCount">460,000+ contacts</strong> with phone numbers collected across all clients. Before you pay to enrich a new lead list, use this tool to check which contacts we already have numbers for &mdash; so you only enrich what's actually needed.</p>
         <p style="margin-bottom:6px;color:var(--details-heading);font-weight:500;">Step 1: Check your list</p>
         <ol style="margin:0 0 12px 18px;">
           <li>Sign in with your @lynnleadgen.com Google account</li>
@@ -190,6 +205,41 @@
           </div>
         </div>
         <button class="sign-out-btn" onclick="signOut()">Sign out</button>
+      </div>
+
+      <!-- Stats Dashboard -->
+      <div class="stats-dashboard" id="statsDashboard">
+        <h2>Database Overview</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value accent" id="statTotalPhones">--</div>
+            <div class="stat-label">Phone Numbers</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value green" id="statWeekAdded">--</div>
+            <div class="stat-label">Added This Week</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value yellow" id="statMonthAdded">--</div>
+            <div class="stat-label">Added This Month</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statTotalContacts">--</div>
+            <div class="stat-label">Total Contacts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value red" id="statTotalDnc">--</div>
+            <div class="stat-label">DNC Entries</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value green" id="statListsChecked">--</div>
+            <div class="stat-label">Lists Checked</div>
+          </div>
+        </div>
+        <div class="activity-feed" id="activityFeed" style="display:none;">
+          <h3>Recent Activity</h3>
+          <div id="activityList"></div>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -367,6 +417,15 @@
 
     let clientsList = []; // loaded dynamically from Supabase
 
+    // Activity logger
+    function logActivity(action, clientSlug, details) {
+      fetch(API_BASE + '/log-activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+        body: JSON.stringify({ action, user_email: userProfile?.email, client_slug: clientSlug || null, details: details || {} }),
+      }).catch(() => {}); // fire and forget
+    }
+
     // ── State ──
     let accessToken = null;
     let userProfile = null;
@@ -431,6 +490,53 @@
       document.getElementById('userName').textContent = userProfile.name;
       document.getElementById('userEmail').textContent = userProfile.email;
       loadClients();
+      loadStats();
+    }
+
+    async function loadStats() {
+      try {
+        const resp = await fetch(API_BASE + '/phone-db-stats', {
+          headers: { 'x-app-password': APP_PASSWORD },
+        });
+        const data = await resp.json();
+        if (data.database) {
+          document.getElementById('statTotalPhones').textContent = data.database.total_phones.toLocaleString();
+          document.getElementById('howItWorksCount').textContent = data.database.total_phones.toLocaleString() + ' contacts';
+          document.getElementById('statTotalContacts').textContent = data.database.total_contacts.toLocaleString();
+          document.getElementById('statTotalDnc').textContent = data.database.total_dnc.toLocaleString();
+          document.getElementById('statWeekAdded').textContent = data.database.phones_added_this_week.toLocaleString();
+          document.getElementById('statMonthAdded').textContent = data.database.phones_added_this_month.toLocaleString();
+        }
+        if (data.usage) {
+          document.getElementById('statListsChecked').textContent = data.usage.total_lists_checked || 0;
+        }
+        if (data.recent_activity && data.recent_activity.length > 0) {
+          const feed = document.getElementById('activityFeed');
+          const list = document.getElementById('activityList');
+          feed.style.display = 'block';
+          list.innerHTML = data.recent_activity.slice(0, 10).map(a => {
+            const actionLabels = { check_list: 'Checked a list', save_numbers: 'Saved numbers', add_dnc: 'Added to DNC' };
+            const label = actionLabels[a.action] || a.action;
+            const user = a.user_email ? a.user_email.split('@')[0] : 'System';
+            const client = a.client_slug ? ` (${a.client_slug})` : '';
+            const count = a.details?.count ? ` - ${a.details.count} contacts` : '';
+            const time = timeAgo(new Date(a.created_at));
+            return `<div class="activity-item"><span class="activity-text"><strong>${user}</strong> ${label}${client}${count}</span><span class="activity-time">${time}</span></div>`;
+          }).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load stats:', err);
+      }
+    }
+
+    function timeAgo(date) {
+      const now = new Date();
+      const diff = Math.floor((now - date) / 1000);
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+      return date.toLocaleDateString();
     }
 
     async function loadClients() {
@@ -829,6 +935,8 @@
         }
 
         results.innerHTML = h;
+        logActivity('check_list', clientSlug, { count: s.total, already_have: s.already_have, need_enrichment: s.need_enrichment, dnc_blocked: s.dnc_blocked });
+        loadStats(); // refresh dashboard
       } catch (err) {
         errorBox.textContent = err.message;
         errorBox.classList.remove('hidden');
@@ -884,6 +992,8 @@
         h += '<p style="color:#888;font-size:13px;margin-top:8px">Columns detected: Email=' + (s.columns_detected.email || 'none') + ', Phone=' + (s.columns_detected.phone || 'none') + '</p></div>';
 
         results.innerHTML = h;
+        logActivity('save_numbers', clientSlug, { count: s.new_contacts_saved + s.existing_updated, new: s.new_contacts_saved, updated: s.existing_updated });
+        loadStats(); // refresh dashboard
       } catch (err) {
         errorBox.textContent = err.message;
         errorBox.classList.remove('hidden');
@@ -942,6 +1052,9 @@
           '<p style="margin-top:8px;color:var(--text);">' + data.added + ' domains added to ' + clientSlug + '\'s DNC list</p>' +
           (data.already_existed > 0 ? '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + data.already_existed + ' were already in the DNC</p>' : '') +
           '</div>';
+
+        logActivity('add_dnc', clientSlug, { count: data.added, domains: domains.slice(0, 5) });
+        loadStats(); // refresh dashboard
 
         // Clear form
         document.getElementById('dncDomains').value = '';
