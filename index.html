@@ -7,93 +7,120 @@
   <script src="https://accounts.google.com/gsi/client" async></script>
   <script src="https://apis.google.com/js/api.js"></script>
   <style>
+    :root {
+      --bg: #0a0a0a; --bg-card: #151515; --border: #2a2a2a; --text: #e0e0e0;
+      --text-heading: #fff; --text-muted: #888; --text-faint: #666; --text-hint: #555;
+      --input-bg: #151515; --input-text: #fff;
+      --accent: #4f8ff7; --accent-hover: #3a7be0;
+      --green: #22c55e; --green-hover: #16a34a; --red: #ef4444; --yellow: #eab308;
+      --pill-bg: #1a1a2e; --pill-border: #2a2a4a;
+      --output-bg: #1a2e1a; --output-border: #2a4a2a;
+      --disabled-bg: #333; --disabled-text: #666;
+      --logo-filter: invert(1);
+      --google-btn-bg: #fff; --google-btn-text: #333; --google-btn-border: #ddd;
+    }
+    body.light {
+      --bg: #f5f5f5; --bg-card: #fff; --border: #e0e0e0; --text: #333;
+      --text-heading: #111; --text-muted: #666; --text-faint: #999; --text-hint: #aaa;
+      --input-bg: #fff; --input-text: #111;
+      --pill-bg: #eef2ff; --pill-border: #c7d2fe;
+      --output-bg: #ecfdf5; --output-border: #a7f3d0;
+      --disabled-bg: #e0e0e0; --disabled-text: #999;
+      --logo-filter: none;
+      --google-btn-bg: #fff; --google-btn-text: #333; --google-btn-border: #ccc;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; min-height: 100vh; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.3s, color 0.3s; }
     .container { max-width: 720px; margin: 0 auto; padding: 40px 20px; }
-    .header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
-    .header img { width: 44px; height: 44px; filter: invert(1); }
-    h1 { font-size: 24px; font-weight: 600; color: #fff; }
-    .subtitle { color: #888; margin-bottom: 32px; font-size: 14px; }
+
+    .header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+    .header img { width: 80px; height: 80px; filter: var(--logo-filter); }
+    h1 { font-size: 24px; font-weight: 600; color: var(--text-heading); }
+    .subtitle { color: var(--text-muted); margin-bottom: 32px; font-size: 14px; }
+
+    .theme-toggle { position: fixed; top: 16px; right: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 18px; line-height: 1; z-index: 100; transition: background 0.3s; }
+    .theme-toggle:hover { border-color: var(--accent); }
 
     .login-section { text-align: center; padding: 48px 0; }
-    .login-section p { color: #888; margin-bottom: 24px; font-size: 14px; }
-    .login-section .domain-note { color: #666; font-size: 12px; margin-top: 16px; }
-    #googleSignInBtn { display: inline-block; }
+    .login-section p { color: var(--text-muted); margin-bottom: 24px; font-size: 14px; }
+    .login-section .domain-note { color: var(--text-faint); font-size: 12px; margin-top: 16px; }
 
-    .user-bar { display: flex; align-items: center; justify-content: space-between; background: #151515; border: 1px solid #2a2a2a; border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; }
+    .user-bar { display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; }
     .user-bar .user-info { display: flex; align-items: center; gap: 10px; }
     .user-bar img { width: 28px; height: 28px; border-radius: 50%; }
-    .user-bar .name { font-size: 14px; color: #ccc; }
-    .user-bar .email { font-size: 12px; color: #666; }
-    .sign-out-btn { background: none; border: 1px solid #333; color: #888; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-    .sign-out-btn:hover { border-color: #555; color: #ccc; }
+    .user-bar .name { font-size: 14px; color: var(--text); }
+    .user-bar .email { font-size: 12px; color: var(--text-faint); }
+    .sign-out-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .sign-out-btn:hover { border-color: var(--accent); color: var(--text); }
 
-    .tabs { display: flex; gap: 2px; margin-bottom: 24px; background: #151515; border-radius: 10px; padding: 4px; border: 1px solid #2a2a2a; }
-    .tab { flex: 1; padding: 12px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: #888; transition: all 0.2s; }
-    .tab.active { background: #4f8ff7; color: #fff; }
-    .tab:hover:not(.active) { color: #ccc; }
+    .tabs { display: flex; gap: 2px; margin-bottom: 24px; background: var(--bg-card); border-radius: 10px; padding: 4px; border: 1px solid var(--border); }
+    .tab { flex: 1; padding: 12px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-muted); transition: all 0.2s; }
+    .tab.active { background: var(--accent); color: #fff; }
+    .tab:hover:not(.active) { color: var(--text); }
 
     .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; font-size: 13px; color: #888; margin-bottom: 6px; }
+    .form-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
     .form-group select, .form-group input[type="text"], .form-group input[type="url"] {
-      width: 100%; padding: 10px 12px; background: #151515; border: 1px solid #2a2a2a; border-radius: 8px; color: #fff; font-size: 14px; outline: none;
+      width: 100%; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; color: var(--input-text); font-size: 14px; outline: none;
     }
-    .form-group select:focus, .form-group input:focus { border-color: #4f8ff7; }
-    .form-group .hint { font-size: 11px; color: #555; margin-top: 4px; }
+    .form-group select:focus, .form-group input:focus { border-color: var(--accent); }
+    .form-group .hint { font-size: 11px; color: var(--text-hint); margin-top: 4px; }
 
-    .sheet-preview { background: #151515; border: 1px solid #2a2a2a; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-    .sheet-preview h3 { font-size: 14px; color: #ccc; margin-bottom: 8px; }
-    .sheet-preview .meta { font-size: 13px; color: #888; }
-    .sheet-preview .meta span { color: #4f8ff7; }
+    .sheet-preview { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .sheet-preview h3 { font-size: 14px; color: var(--text); margin-bottom: 8px; }
+    .sheet-preview .meta { font-size: 13px; color: var(--text-muted); }
+    .sheet-preview .meta span { color: var(--accent); }
     .sheet-tabs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-    .sheet-tab-pill { font-size: 11px; padding: 3px 10px; border-radius: 12px; background: #1a1a2e; color: #4f8ff7; border: 1px solid #2a2a4a; cursor: pointer; }
-    .sheet-tab-pill.selected { background: #4f8ff7; color: #fff; border-color: #4f8ff7; }
+    .sheet-tab-pill { font-size: 11px; padding: 3px 10px; border-radius: 12px; background: var(--pill-bg); color: var(--accent); border: 1px solid var(--pill-border); cursor: pointer; }
+    .sheet-tab-pill.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-    .btn { width: 100%; padding: 14px; background: #4f8ff7; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
-    .btn:hover { background: #3a7be0; }
-    .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
-    .btn.save-btn { background: #22c55e; }
-    .btn.save-btn:hover { background: #16a34a; }
+    .btn { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { background: var(--disabled-bg); color: var(--disabled-text); cursor: not-allowed; }
+    .btn.save-btn { background: var(--green); }
+    .btn.save-btn:hover { background: var(--green-hover); }
 
     .results { margin-top: 24px; }
-    .result-card { background: #151515; border: 1px solid #2a2a2a; border-radius: 10px; padding: 20px; margin-bottom: 12px; }
+    .result-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 12px; }
     .result-card h3 { font-size: 15px; margin-bottom: 4px; }
     .result-card .count { font-size: 28px; font-weight: 600; }
-    .result-card .count.green { color: #22c55e; }
-    .result-card .count.blue { color: #4f8ff7; }
-    .result-card .count.red { color: #ef4444; }
-    .result-card .count.yellow { color: #eab308; }
+    .result-card .count.green { color: var(--green); }
+    .result-card .count.blue { color: var(--accent); }
+    .result-card .count.red { color: var(--red); }
+    .result-card .count.yellow { color: var(--yellow); }
     .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 
-    .output-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 16px; background: #1a2e1a; border: 1px solid #2a4a2a; border-radius: 8px; color: #22c55e; text-decoration: none; font-size: 14px; }
-    .output-link:hover { background: #1e3a1e; }
+    .output-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 16px; background: var(--output-bg); border: 1px solid var(--output-border); border-radius: 8px; color: var(--green); text-decoration: none; font-size: 14px; }
+    .output-link:hover { opacity: 0.9; }
 
     .loading { display: none; text-align: center; padding: 24px; }
     .loading.show { display: block; }
-    .loading p { color: #888; margin-top: 12px; font-size: 14px; }
-    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #333; border-top-color: #4f8ff7; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .loading p { color: var(--text-muted); margin-top: 12px; font-size: 14px; }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .error { color: #ef4444; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); padding: 12px 16px; border-radius: 8px; margin-top: 12px; font-size: 14px; }
+    .error { color: var(--red); background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); padding: 12px 16px; border-radius: 8px; margin-top: 12px; font-size: 14px; }
     .hidden { display: none; }
 
-    .upload-area { border: 2px dashed #333; border-radius: 12px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 24px; }
-    .upload-area:hover, .upload-area.dragover { border-color: #4f8ff7; background: rgba(79,143,247,0.05); }
-    .upload-area p { color: #888; font-size: 14px; }
+    .upload-area { border: 2px dashed var(--border); border-radius: 12px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 24px; }
+    .upload-area:hover, .upload-area.dragover { border-color: var(--accent); background: rgba(79,143,247,0.05); }
+    .upload-area p { color: var(--text-muted); font-size: 14px; }
     .upload-area .icon { font-size: 32px; margin-bottom: 12px; }
     .upload-area input { display: none; }
-    .file-name { color: #4f8ff7; font-weight: 500; margin-top: 8px; }
+    .file-name { color: var(--accent); font-weight: 500; margin-top: 8px; }
 
-    .or-divider { text-align: center; color: #555; font-size: 12px; margin: 16px 0; position: relative; }
-    .or-divider::before, .or-divider::after { content: ''; position: absolute; top: 50%; width: calc(50% - 20px); height: 1px; background: #2a2a2a; }
+    .or-divider { text-align: center; color: var(--text-hint); font-size: 12px; margin: 16px 0; position: relative; }
+    .or-divider::before, .or-divider::after { content: ''; position: absolute; top: 50%; width: calc(50% - 20px); height: 1px; background: var(--border); }
     .or-divider::before { left: 0; }
     .or-divider::after { right: 0; }
 
-    .progress-bar { width: 100%; height: 4px; background: #2a2a2a; border-radius: 2px; overflow: hidden; margin-top: 12px; }
-    .progress-bar .fill { height: 100%; background: #4f8ff7; transition: width 0.3s; border-radius: 2px; }
+    .progress-bar { width: 100%; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 12px; }
+    .progress-bar .fill { height: 100%; background: var(--accent); transition: width 0.3s; border-radius: 2px; }
   </style>
 </head>
 <body>
+  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">&#9790;</button>
   <div class="container">
     <div class="header">
       <img src="logo.png" alt="Lynn Lead Gen">
@@ -138,7 +165,7 @@
     <!-- Login Section -->
     <div id="loginSection" class="login-section">
       <p>Sign in with your Lynn Lead Gen Google account</p>
-      <button onclick="doGoogleSignIn()" style="display:inline-flex;align-items:center;gap:10px;padding:12px 24px;background:#fff;color:#333;border:1px solid #ddd;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;">
+      <button onclick="doGoogleSignIn()" style="display:inline-flex;align-items:center;gap:10px;padding:12px 24px;background:var(--google-btn-bg);color:var(--google-btn-text);border:1px solid var(--google-btn-border);border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;">
         <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
         Sign in with Google
       </button>
@@ -278,6 +305,18 @@
   </div>
 
   <script>
+    // ── Theme ──
+    function toggleTheme() {
+      const isLight = document.body.classList.toggle('light');
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isLight ? '\u2600' : '\u263E';
+    }
+    // Load saved theme
+    if (localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light');
+      document.querySelector('.theme-toggle').textContent = '\u2600';
+    }
+
     // ── Config ──
     const GOOGLE_CLIENT_ID = '886782297922-nhh7eqcoh3rtfe0al3tb5l7sl11b2f0e.apps.googleusercontent.com';
     const API_BASE = 'https://qbqhggzqrmllrvnmdtqg.supabase.co/functions/v1';
