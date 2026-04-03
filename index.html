@@ -163,6 +163,7 @@
       <div class="tabs">
         <div class="tab active" onclick="switchTab('check')" id="tabCheck">Check a List</div>
         <div class="tab" onclick="switchTab('save')" id="tabSave">Save New Numbers</div>
+        <div class="tab" onclick="switchTab('newclient')" id="tabNewClient">New Client</div>
       </div>
 
       <!-- CHECK MODE -->
@@ -237,6 +238,34 @@
         <button class="btn save-btn" id="saveBtn" disabled onclick="runSave()">Save Numbers to Database</button>
       </div>
 
+      <!-- NEW CLIENT MODE -->
+      <div id="newClientMode" class="hidden">
+        <div class="result-card" style="margin-bottom:20px;">
+          <h3 style="margin-bottom:4px;">Add a new client to the database</h3>
+          <p style="color:#888;font-size:13px;">This will create the client in Supabase so they appear in all dropdowns and can have leads assigned to them.</p>
+        </div>
+
+        <div class="form-group">
+          <label>Client Name *</label>
+          <input type="text" id="newClientName" placeholder="e.g. Acme Corp" oninput="updateSlugPreview()">
+          <div class="hint" id="slugPreview"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Website Domain</label>
+          <input type="text" id="newClientWebsite" placeholder="e.g. acmecorp.com">
+          <div class="hint">Optional. Just the domain, no https://</div>
+        </div>
+
+        <div class="form-group">
+          <label>Industry</label>
+          <input type="text" id="newClientIndustry" placeholder="e.g. Supply Chain Software">
+          <div class="hint">Optional. Helps with segmentation.</div>
+        </div>
+
+        <button class="btn" style="background:#8b5cf6;" onclick="createClient()">Create Client</button>
+      </div>
+
       <!-- Loading / Error / Results -->
       <div class="loading" id="loading">
         <div class="spinner"></div>
@@ -256,11 +285,7 @@
     const ALLOWED_DOMAIN = 'lynnleadgen.com';
     const SCOPES = 'openid email profile https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
 
-    const CLIENTS = [
-      'alpega','buyco','datatex','descartes','easy4pro','easybop','easypqq',
-      'easysmartforms','freightgate','holvrine','ifcn-dairy','intuendi',
-      'matium','meight','propeller','simpleb2b','sparkwise','sutherland','volue'
-    ];
+    let clientsList = []; // loaded dynamically from Supabase
 
     // ── State ──
     let accessToken = null;
@@ -325,18 +350,37 @@
       document.getElementById('userAvatar').src = userProfile.picture;
       document.getElementById('userName').textContent = userProfile.name;
       document.getElementById('userEmail').textContent = userProfile.email;
+      loadClients();
+    }
 
-      // Populate client dropdowns
+    async function loadClients() {
+      try {
+        const resp = await fetch(API_BASE + '/clients', {
+          headers: { 'x-app-password': APP_PASSWORD },
+        });
+        const data = await resp.json();
+        if (data.clients) {
+          clientsList = data.clients.filter(c => c.status === 'active');
+          populateClientDropdowns();
+        }
+      } catch (err) {
+        console.error('Failed to load clients:', err);
+      }
+    }
+
+    function populateClientDropdowns() {
       ['clientSelect', 'saveClientSelect'].forEach(id => {
         const sel = document.getElementById(id);
-        if (sel.options.length <= 1) {
-          CLIENTS.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c;
-            opt.textContent = c.charAt(0).toUpperCase() + c.slice(1).replace(/-/g, ' ');
-            sel.appendChild(opt);
-          });
-        }
+        const currentVal = sel.value;
+        // Keep the first default option, clear the rest
+        while (sel.options.length > 1) sel.remove(1);
+        clientsList.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.slug;
+          opt.textContent = c.name;
+          sel.appendChild(opt);
+        });
+        sel.value = currentVal;
       });
     }
 
@@ -357,8 +401,10 @@
     function switchTab(tab) {
       document.getElementById('checkMode').classList.toggle('hidden', tab !== 'check');
       document.getElementById('saveMode').classList.toggle('hidden', tab !== 'save');
+      document.getElementById('newClientMode').classList.toggle('hidden', tab !== 'newclient');
       document.getElementById('tabCheck').classList.toggle('active', tab === 'check');
       document.getElementById('tabSave').classList.toggle('active', tab === 'save');
+      document.getElementById('tabNewClient').classList.toggle('active', tab === 'newclient');
       document.getElementById('results').innerHTML = '';
       document.getElementById('errorBox').classList.add('hidden');
     }
@@ -774,6 +820,69 @@
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    // ── Error helper ──
+    // ── New Client ──
+    function updateSlugPreview() {
+      const name = document.getElementById('newClientName').value;
+      if (!name.trim()) {
+        document.getElementById('slugPreview').textContent = '';
+        return;
+      }
+      const slug = name.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+      document.getElementById('slugPreview').textContent = 'Slug: ' + slug;
+    }
+
+    async function createClient() {
+      const name = document.getElementById('newClientName').value.trim();
+      const website = document.getElementById('newClientWebsite').value.trim();
+      const industry = document.getElementById('newClientIndustry').value.trim();
+      const errorBox = document.getElementById('errorBox');
+      const results = document.getElementById('results');
+      errorBox.classList.add('hidden');
+      results.innerHTML = '';
+
+      if (!name) {
+        showError('Client name is required.');
+        return;
+      }
+
+      const loading = document.getElementById('loading');
+      loading.classList.add('show');
+      document.getElementById('loadingText').textContent = 'Creating client...';
+
+      try {
+        const resp = await fetch(API_BASE + '/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify({ name, website, industry }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        const c = data.client;
+        results.innerHTML = '<div class="result-card">' +
+          '<h3 style="color:#22c55e;">Client created successfully</h3>' +
+          '<p style="margin-top:8px;color:#ccc;font-size:15px;font-weight:500;">' + c.name + '</p>' +
+          '<p style="color:#888;font-size:13px;margin-top:4px;">Slug: ' + c.slug + (c.website ? ' &middot; ' + c.website : '') + (c.industry ? ' &middot; ' + c.industry : '') + '</p>' +
+          '<p style="color:#888;font-size:13px;margin-top:8px;">This client now appears in all dropdowns across the tool.</p>' +
+          '</div>';
+
+        // Clear form
+        document.getElementById('newClientName').value = '';
+        document.getElementById('newClientWebsite').value = '';
+        document.getElementById('newClientIndustry').value = '';
+        document.getElementById('slugPreview').textContent = '';
+
+        // Refresh client dropdowns
+        await loadClients();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+      } finally {
+        loading.classList.remove('show');
+      }
     }
 
     // ── Error helper ──
