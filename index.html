@@ -196,6 +196,7 @@
       <div class="tabs">
         <div class="tab active" onclick="switchTab('check')" id="tabCheck">Check a List</div>
         <div class="tab" onclick="switchTab('save')" id="tabSave">Save New Numbers</div>
+        <div class="tab" onclick="switchTab('dnc')" id="tabDnc">Add to DNC</div>
         <div class="tab" onclick="switchTab('newclient')" id="tabNewClient">New Client</div>
       </div>
 
@@ -269,6 +270,40 @@
         </div>
 
         <button class="btn save-btn" id="saveBtn" disabled onclick="runSave()">Save Numbers to Database</button>
+      </div>
+
+      <!-- DNC MODE -->
+      <div id="dncMode" class="hidden">
+        <div class="result-card" style="margin-bottom:20px;">
+          <h3 style="margin-bottom:4px;">Add companies to a client's Do Not Contact list</h3>
+          <p style="color:var(--text-muted);font-size:13px;">These companies will be flagged in future list checks. Also add them to EmailBison's block list for live campaign filtering.</p>
+        </div>
+
+        <div class="form-group">
+          <label>Client *</label>
+          <select id="dncClientSelect">
+            <option value="">-- Select client --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Domains to block (one per line)</label>
+          <textarea id="dncDomains" rows="6" placeholder="danone.com&#10;heineken.com&#10;nestle.com" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--input-text);font-size:14px;outline:none;font-family:inherit;resize:vertical;"></textarea>
+          <div class="hint">Enter company domains, one per line. No https:// needed.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Company names (optional, one per line)</label>
+          <textarea id="dncCompanyNames" rows="4" placeholder="Danone SA&#10;Heineken&#10;Nestle" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--input-text);font-size:14px;outline:none;font-family:inherit;resize:vertical;"></textarea>
+          <div class="hint">If provided, matched line-by-line with domains above. Helps with company name matching.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Reason</label>
+          <input type="text" id="dncReason" placeholder="e.g. client request, existing customer, competitor" value="client_request">
+        </div>
+
+        <button class="btn" style="background:var(--red);" onclick="addToDnc()">Add to DNC</button>
       </div>
 
       <!-- NEW CLIENT MODE -->
@@ -414,7 +449,7 @@
     }
 
     function populateClientDropdowns() {
-      ['clientSelect', 'saveClientSelect'].forEach(id => {
+      ['clientSelect', 'saveClientSelect', 'dncClientSelect'].forEach(id => {
         const sel = document.getElementById(id);
         const currentVal = sel.value;
         // Keep the first default option, clear the rest
@@ -446,9 +481,11 @@
     function switchTab(tab) {
       document.getElementById('checkMode').classList.toggle('hidden', tab !== 'check');
       document.getElementById('saveMode').classList.toggle('hidden', tab !== 'save');
+      document.getElementById('dncMode').classList.toggle('hidden', tab !== 'dnc');
       document.getElementById('newClientMode').classList.toggle('hidden', tab !== 'newclient');
       document.getElementById('tabCheck').classList.toggle('active', tab === 'check');
       document.getElementById('tabSave').classList.toggle('active', tab === 'save');
+      document.getElementById('tabDnc').classList.toggle('active', tab === 'dnc');
       document.getElementById('tabNewClient').classList.toggle('active', tab === 'newclient');
       document.getElementById('results').innerHTML = '';
       document.getElementById('errorBox').classList.add('hidden');
@@ -868,6 +905,55 @@
     }
 
     // ── Error helper ──
+    // ── DNC ──
+    async function addToDnc() {
+      const clientSlug = document.getElementById('dncClientSelect').value;
+      const domainsText = document.getElementById('dncDomains').value.trim();
+      const namesText = document.getElementById('dncCompanyNames').value.trim();
+      const reason = document.getElementById('dncReason').value.trim() || 'client_request';
+      const errorBox = document.getElementById('errorBox');
+      const results = document.getElementById('results');
+      errorBox.classList.add('hidden');
+      results.innerHTML = '';
+
+      if (!clientSlug) { showError('Please select a client.'); return; }
+      if (!domainsText) { showError('Please enter at least one domain.'); return; }
+
+      const domains = domainsText.split('\n').map(d => d.trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '')).filter(d => d);
+      const names = namesText ? namesText.split('\n').map(n => n.trim()).filter(n => n) : [];
+
+      if (domains.length === 0) { showError('No valid domains found.'); return; }
+
+      const loading = document.getElementById('loading');
+      loading.classList.add('show');
+      document.getElementById('loadingText').textContent = 'Adding to DNC...';
+
+      try {
+        const resp = await fetch(API_BASE + '/add-dnc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify({ client_slug: clientSlug, domains, company_names: names, reason }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        results.innerHTML = '<div class="result-card">' +
+          '<h3 style="color:var(--red);">Added to DNC</h3>' +
+          '<p style="margin-top:8px;color:var(--text);">' + data.added + ' domains added to ' + clientSlug + '\'s DNC list</p>' +
+          (data.already_existed > 0 ? '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + data.already_existed + ' were already in the DNC</p>' : '') +
+          '</div>';
+
+        // Clear form
+        document.getElementById('dncDomains').value = '';
+        document.getElementById('dncCompanyNames').value = '';
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+      } finally {
+        loading.classList.remove('show');
+      }
+    }
+
     // ── New Client ──
     function updateSlugPreview() {
       const name = document.getElementById('newClientName').value;
