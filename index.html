@@ -123,13 +123,15 @@
         <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 2: Enrich the gaps</p>
         <p style="margin:0 0 12px 0;">Take the "Need Enrichment" tab and run it through your enrichment source (Apollo, Clay, Wiza, etc.)</p>
         <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 3: Upload enriched numbers</p>
-        <ol style="margin:0 0 0 18px;">
+        <ol style="margin:0 0 12px 18px;">
           <li>Switch to the <strong style="color:#ccc;">Save New Numbers</strong> tab</li>
           <li>Select the client you enriched for</li>
           <li>Paste the Google Sheet URL of your enriched list (must have a Phone column)</li>
           <li>Click <strong style="color:#ccc;">Save Numbers to Database</strong></li>
           <li>The new numbers are added to the master database and linked to the client</li>
         </ol>
+        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Phone number formatting</p>
+        <p style="margin:0 0 0 0;">No need to clean up phone numbers before uploading. The tool automatically formats all numbers to international standard (+digits only), regardless of how they come from Apollo, Clay, or Wiza. Spaces, brackets, dashes, and other special characters are all stripped automatically. Invalid or junk values are skipped.</p>
       </div>
     </details>
 
