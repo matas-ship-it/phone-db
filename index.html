@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLG Phone Database</title>
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; min-height: 100vh; }
+    .container { max-width: 720px; margin: 0 auto; padding: 40px 20px; }
+    h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; color: #fff; }
+    .subtitle { color: #888; margin-bottom: 32px; font-size: 14px; }
+
+    .login-section { text-align: center; padding: 48px 0; }
+    .login-section p { color: #888; margin-bottom: 24px; font-size: 14px; }
+    .login-section .domain-note { color: #666; font-size: 12px; margin-top: 16px; }
+    #googleSignInBtn { display: inline-block; }
+
+    .user-bar { display: flex; align-items: center; justify-content: space-between; background: #151515; border: 1px solid #2a2a2a; border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; }
+    .user-bar .user-info { display: flex; align-items: center; gap: 10px; }
+    .user-bar img { width: 28px; height: 28px; border-radius: 50%; }
+    .user-bar .name { font-size: 14px; color: #ccc; }
+    .user-bar .email { font-size: 12px; color: #666; }
+    .sign-out-btn { background: none; border: 1px solid #333; color: #888; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .sign-out-btn:hover { border-color: #555; color: #ccc; }
+
+    .tabs { display: flex; gap: 2px; margin-bottom: 24px; background: #151515; border-radius: 10px; padding: 4px; border: 1px solid #2a2a2a; }
+    .tab { flex: 1; padding: 12px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: #888; transition: all 0.2s; }
+    .tab.active { background: #4f8ff7; color: #fff; }
+    .tab:hover:not(.active) { color: #ccc; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: #888; margin-bottom: 6px; }
+    .form-group select, .form-group input[type="text"], .form-group input[type="url"] {
+      width: 100%; padding: 10px 12px; background: #151515; border: 1px solid #2a2a2a; border-radius: 8px; color: #fff; font-size: 14px; outline: none;
+    }
+    .form-group select:focus, .form-group input:focus { border-color: #4f8ff7; }
+    .form-group .hint { font-size: 11px; color: #555; margin-top: 4px; }
+
+    .sheet-preview { background: #151515; border: 1px solid #2a2a2a; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .sheet-preview h3 { font-size: 14px; color: #ccc; margin-bottom: 8px; }
+    .sheet-preview .meta { font-size: 13px; color: #888; }
+    .sheet-preview .meta span { color: #4f8ff7; }
+    .sheet-tabs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .sheet-tab-pill { font-size: 11px; padding: 3px 10px; border-radius: 12px; background: #1a1a2e; color: #4f8ff7; border: 1px solid #2a2a4a; cursor: pointer; }
+    .sheet-tab-pill.selected { background: #4f8ff7; color: #fff; border-color: #4f8ff7; }
+
+    .btn { width: 100%; padding: 14px; background: #4f8ff7; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .btn:hover { background: #3a7be0; }
+    .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+    .btn.save-btn { background: #22c55e; }
+    .btn.save-btn:hover { background: #16a34a; }
+
+    .results { margin-top: 24px; }
+    .result-card { background: #151515; border: 1px solid #2a2a2a; border-radius: 10px; padding: 20px; margin-bottom: 12px; }
+    .result-card h3 { font-size: 15px; margin-bottom: 4px; }
+    .result-card .count { font-size: 28px; font-weight: 600; }
+    .result-card .count.green { color: #22c55e; }
+    .result-card .count.blue { color: #4f8ff7; }
+    .result-card .count.red { color: #ef4444; }
+    .result-card .count.yellow { color: #eab308; }
+    .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+
+    .output-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 16px; background: #1a2e1a; border: 1px solid #2a4a2a; border-radius: 8px; color: #22c55e; text-decoration: none; font-size: 14px; }
+    .output-link:hover { background: #1e3a1e; }
+
+    .loading { display: none; text-align: center; padding: 24px; }
+    .loading.show { display: block; }
+    .loading p { color: #888; margin-top: 12px; font-size: 14px; }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #333; border-top-color: #4f8ff7; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error { color: #ef4444; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); padding: 12px 16px; border-radius: 8px; margin-top: 12px; font-size: 14px; }
+    .hidden { display: none; }
+
+    .upload-area { border: 2px dashed #333; border-radius: 12px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 24px; }
+    .upload-area:hover, .upload-area.dragover { border-color: #4f8ff7; background: rgba(79,143,247,0.05); }
+    .upload-area p { color: #888; font-size: 14px; }
+    .upload-area .icon { font-size: 32px; margin-bottom: 12px; }
+    .upload-area input { display: none; }
+    .file-name { color: #4f8ff7; font-weight: 500; margin-top: 8px; }
+
+    .or-divider { text-align: center; color: #555; font-size: 12px; margin: 16px 0; position: relative; }
+    .or-divider::before, .or-divider::after { content: ''; position: absolute; top: 50%; width: calc(50% - 20px); height: 1px; background: #2a2a2a; }
+    .or-divider::before { left: 0; }
+    .or-divider::after { right: 0; }
+
+    .progress-bar { width: 100%; height: 4px; background: #2a2a2a; border-radius: 2px; overflow: hidden; margin-top: 12px; }
+    .progress-bar .fill { height: 100%; background: #4f8ff7; transition: width 0.3s; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>LLG Phone Database</h1>
+    <p class="subtitle">Check lead lists against 460K+ contacts. Save new phone numbers.</p>
+
+    <!-- Login Section -->
+    <div id="loginSection" class="login-section">
+      <p>Sign in with your Lynn Lead Gen Google account</p>
+      <div id="googleSignInBtn"></div>
+      <p class="domain-note">Restricted to @lynnleadgen.com accounts</p>
+    </div>
+
+    <!-- App Section -->
+    <div id="appSection" class="hidden">
+      <!-- User Bar -->
+      <div class="user-bar">
+        <div class="user-info">
+          <img id="userAvatar" src="" alt="">
+          <div>
+            <div class="name" id="userName"></div>
+            <div class="email" id="userEmail"></div>
+          </div>
+        </div>
+        <button class="sign-out-btn" onclick="signOut()">Sign out</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('check')" id="tabCheck">Check a List</div>
+        <div class="tab" onclick="switchTab('save')" id="tabSave">Save New Numbers</div>
+      </div>
+
+      <!-- CHECK MODE -->
+      <div id="checkMode">
+        <div class="form-group">
+          <label>Client (for DNC check)</label>
+          <select id="clientSelect">
+            <option value="">-- No DNC check --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Google Sheet URL</label>
+          <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..." oninput="onSheetUrlChange()">
+          <div class="hint">Paste a Google Sheet URL. You must have read access to the sheet.</div>
+        </div>
+
+        <!-- Sheet Preview -->
+        <div id="sheetPreview" class="sheet-preview hidden">
+          <h3 id="sheetTitle">Loading...</h3>
+          <div class="meta"><span id="sheetRowCount">0</span> rows across <span id="sheetTabCount">0</span> tabs</div>
+          <div class="sheet-tabs" id="sheetTabs"></div>
+        </div>
+
+        <div class="or-divider">or</div>
+
+        <div class="upload-area" id="checkUpload" onclick="document.getElementById('checkFile').click()">
+          <div class="icon">&#128269;</div>
+          <p>Drop a CSV file here</p>
+          <p class="file-name" id="checkFileName"></p>
+          <input type="file" id="checkFile" accept=".csv" onchange="handleFile(this,'check')">
+        </div>
+
+        <button class="btn" id="checkBtn" disabled onclick="runCheck()">Check List</button>
+      </div>
+
+      <!-- SAVE MODE -->
+      <div id="saveMode" class="hidden">
+        <div class="form-group">
+          <label>Source tag (e.g. apollo, clay, wiza)</label>
+          <input type="text" id="sourceTag" placeholder="web_upload" value="web_upload">
+        </div>
+
+        <div class="form-group">
+          <label>Google Sheet URL</label>
+          <input type="url" id="saveSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..." oninput="onSaveSheetUrlChange()">
+          <div class="hint">Sheet must have a Phone column.</div>
+        </div>
+
+        <div id="saveSheetPreview" class="sheet-preview hidden">
+          <h3 id="saveSheetTitle">Loading...</h3>
+          <div class="meta"><span id="saveSheetRowCount">0</span> rows across <span id="saveSheetTabCount">0</span> tabs</div>
+          <div class="sheet-tabs" id="saveSheetTabs"></div>
+        </div>
+
+        <div class="or-divider">or</div>
+
+        <div class="upload-area" id="saveUpload" onclick="document.getElementById('saveFile').click()">
+          <div class="icon">&#128190;</div>
+          <p>Drop a CSV file here (must have Phone column)</p>
+          <p class="file-name" id="saveFileName"></p>
+          <input type="file" id="saveFile" accept=".csv" onchange="handleFile(this,'save')">
+        </div>
+
+        <button class="btn save-btn" id="saveBtn" disabled onclick="runSave()">Save Numbers to Database</button>
+      </div>
+
+      <!-- Loading / Error / Results -->
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p id="loadingText">Processing...</p>
+        <div class="progress-bar" id="progressBar" style="display:none"><div class="fill" id="progressFill"></div></div>
+      </div>
+      <div id="errorBox" class="error hidden"></div>
+      <div id="results" class="results"></div>
+    </div>
+  </div>
+
+  <script>
+    // ── Config ──
+    const GOOGLE_CLIENT_ID = '886782297922-nhh7eqcoh3rtfe0al3tb5l7sl11b2f0e.apps.googleusercontent.com';
+    const API_BASE = 'https://qbqhggzqrmllrvnmdtqg.supabase.co/functions/v1';
+    const APP_PASSWORD = 'llg2026';
+    const ALLOWED_DOMAIN = 'lynnleadgen.com';
+    const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+
+    const CLIENTS = [
+      'alpega','buyco','datatex','descartes','easy4pro','easybop','easypqq',
+      'easysmartforms','freightgate','holvrine','ifcn-dairy','intuendi',
+      'matium','meight','propeller','simpleb2b','sparkwise','sutherland','volue'
+    ];
+
+    // ── State ──
+    let accessToken = null;
+    let userProfile = null;
+    let tokenClient = null;
+    let checkCSV = '';
+    let saveCSV = '';
+    let sheetMeta = null;       // { id, title, sheets: [{title, rowCount}] }
+    let saveSheetMeta = null;
+    let selectedSheetTab = 0;
+    let selectedSaveTab = 0;
+
+    // ── Google Identity Services ──
+    window.onload = function() {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+        auto_select: true,
+      });
+      google.accounts.id.renderButton(
+        document.getElementById('googleSignInBtn'),
+        { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: 280 }
+      );
+
+      // Token client for Sheets API access
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPES,
+        callback: handleTokenResponse,
+      });
+    };
+
+    function handleCredentialResponse(response) {
+      // Decode the JWT ID token
+      const payload = JSON.parse(atob(response.credential.split('.')[1]));
+      const email = payload.email || '';
+      const domain = email.split('@')[1] || '';
+
+      if (domain !== ALLOWED_DOMAIN) {
+        showError('Access restricted to @' + ALLOWED_DOMAIN + ' accounts. You signed in with ' + email);
+        return;
+      }
+
+      userProfile = {
+        name: payload.name,
+        email: payload.email,
+        picture: payload.picture,
+      };
+
+      // Now request an access token for Sheets API
+      tokenClient.requestAccessToken({ hint: payload.email });
+    }
+
+    function handleTokenResponse(response) {
+      if (response.error) {
+        showError('Google auth failed: ' + response.error);
+        return;
+      }
+      accessToken = response.access_token;
+      showApp();
+    }
+
+    function showApp() {
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('appSection').classList.remove('hidden');
+      document.getElementById('userAvatar').src = userProfile.picture;
+      document.getElementById('userName').textContent = userProfile.name;
+      document.getElementById('userEmail').textContent = userProfile.email;
+
+      // Populate client dropdown
+      const sel = document.getElementById('clientSelect');
+      if (sel.options.length <= 1) {
+        CLIENTS.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c.charAt(0).toUpperCase() + c.slice(1).replace(/-/g, ' ');
+          sel.appendChild(opt);
+        });
+      }
+    }
+
+    function signOut() {
+      google.accounts.id.disableAutoSelect();
+      if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken);
+      }
+      accessToken = null;
+      userProfile = null;
+      sheetMeta = null;
+      saveSheetMeta = null;
+      document.getElementById('appSection').classList.add('hidden');
+      document.getElementById('loginSection').classList.remove('hidden');
+    }
+
+    // ── Tab switching ──
+    function switchTab(tab) {
+      document.getElementById('checkMode').classList.toggle('hidden', tab !== 'check');
+      document.getElementById('saveMode').classList.toggle('hidden', tab !== 'save');
+      document.getElementById('tabCheck').classList.toggle('active', tab === 'check');
+      document.getElementById('tabSave').classList.toggle('active', tab === 'save');
+      document.getElementById('results').innerHTML = '';
+      document.getElementById('errorBox').classList.add('hidden');
+    }
+
+    // ── Google Sheets helpers ──
+    function extractSpreadsheetId(url) {
+      const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+      return m ? m[1] : null;
+    }
+
+    let sheetUrlDebounce = null;
+    function onSheetUrlChange() {
+      clearTimeout(sheetUrlDebounce);
+      const url = document.getElementById('sheetUrl').value.trim();
+      const id = extractSpreadsheetId(url);
+      if (!id) {
+        document.getElementById('sheetPreview').classList.add('hidden');
+        sheetMeta = null;
+        updateCheckBtn();
+        return;
+      }
+      sheetUrlDebounce = setTimeout(() => loadSheetMeta(id, 'check'), 500);
+    }
+
+    let saveSheetUrlDebounce = null;
+    function onSaveSheetUrlChange() {
+      clearTimeout(saveSheetUrlDebounce);
+      const url = document.getElementById('saveSheetUrl').value.trim();
+      const id = extractSpreadsheetId(url);
+      if (!id) {
+        document.getElementById('saveSheetPreview').classList.add('hidden');
+        saveSheetMeta = null;
+        updateSaveBtn();
+        return;
+      }
+      saveSheetUrlDebounce = setTimeout(() => loadSheetMeta(id, 'save'), 500);
+    }
+
+    async function loadSheetMeta(spreadsheetId, mode) {
+      try {
+        const resp = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties`,
+          { headers: { Authorization: 'Bearer ' + accessToken } }
+        );
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.error?.message || 'Cannot access sheet');
+        }
+        const data = await resp.json();
+        const meta = {
+          id: spreadsheetId,
+          title: data.properties.title,
+          sheets: data.sheets.map(s => ({
+            title: s.properties.title,
+            rowCount: s.properties.gridProperties.rowCount,
+            index: s.properties.sheetId,
+          })),
+        };
+
+        if (mode === 'check') {
+          sheetMeta = meta;
+          selectedSheetTab = 0;
+          renderSheetPreview(meta, 'sheetPreview', 'sheetTitle', 'sheetRowCount', 'sheetTabCount', 'sheetTabs', 'check');
+          updateCheckBtn();
+        } else {
+          saveSheetMeta = meta;
+          selectedSaveTab = 0;
+          renderSheetPreview(meta, 'saveSheetPreview', 'saveSheetTitle', 'saveSheetRowCount', 'saveSheetTabCount', 'saveSheetTabs', 'save');
+          updateSaveBtn();
+        }
+      } catch (err) {
+        if (mode === 'check') {
+          document.getElementById('sheetPreview').classList.add('hidden');
+          sheetMeta = null;
+          updateCheckBtn();
+        } else {
+          document.getElementById('saveSheetPreview').classList.add('hidden');
+          saveSheetMeta = null;
+          updateSaveBtn();
+        }
+        showError(err.message);
+      }
+    }
+
+    function renderSheetPreview(meta, containerId, titleId, rowId, tabCountId, tabsId, mode) {
+      document.getElementById(containerId).classList.remove('hidden');
+      document.getElementById(titleId).textContent = meta.title;
+      const totalRows = meta.sheets.reduce((sum, s) => sum + s.rowCount, 0);
+      document.getElementById(rowId).textContent = totalRows.toLocaleString();
+      document.getElementById(tabCountId).textContent = meta.sheets.length;
+
+      const tabsEl = document.getElementById(tabsId);
+      tabsEl.innerHTML = '';
+      meta.sheets.forEach((s, i) => {
+        const pill = document.createElement('span');
+        pill.className = 'sheet-tab-pill' + (i === 0 ? ' selected' : '');
+        pill.textContent = s.title;
+        pill.onclick = () => selectSheetTab(i, mode);
+        tabsEl.appendChild(pill);
+      });
+    }
+
+    function selectSheetTab(index, mode) {
+      if (mode === 'check') {
+        selectedSheetTab = index;
+        document.querySelectorAll('#sheetTabs .sheet-tab-pill').forEach((el, i) => {
+          el.classList.toggle('selected', i === index);
+        });
+      } else {
+        selectedSaveTab = index;
+        document.querySelectorAll('#saveSheetTabs .sheet-tab-pill').forEach((el, i) => {
+          el.classList.toggle('selected', i === index);
+        });
+      }
+    }
+
+    async function readSheetAsCSV(spreadsheetId, sheetTitle) {
+      const range = encodeURIComponent(sheetTitle);
+      const resp = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
+        { headers: { Authorization: 'Bearer ' + accessToken } }
+      );
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error?.message || 'Failed to read sheet');
+      }
+      const data = await resp.json();
+      const rows = data.values || [];
+      if (rows.length === 0) throw new Error('Sheet is empty');
+
+      // Convert to CSV
+      return rows.map(row =>
+        row.map(cell => {
+          const s = String(cell);
+          if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+            return '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        }).join(',')
+      ).join('\n');
+    }
+
+    // ── CSV file upload (fallback) ──
+    function handleFile(input, mode) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        const lineCount = text.split('\n').filter(l => l.trim()).length - 1;
+        if (mode === 'check') {
+          checkCSV = text;
+          document.getElementById('checkFileName').textContent = file.name + ' (' + lineCount + ' rows)';
+          updateCheckBtn();
+        } else {
+          saveCSV = text;
+          document.getElementById('saveFileName').textContent = file.name + ' (' + lineCount + ' rows)';
+          updateSaveBtn();
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Drag and drop
+    ['checkUpload', 'saveUpload'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('dragover'); });
+      el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        el.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (!file || !file.name.endsWith('.csv')) return;
+        const mode = id === 'checkUpload' ? 'check' : 'save';
+        const input = document.getElementById(mode + 'File');
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        handleFile(input, mode);
+      });
+    });
+
+    // ── Button state ──
+    function updateCheckBtn() {
+      document.getElementById('checkBtn').disabled = !(sheetMeta || checkCSV);
+    }
+    function updateSaveBtn() {
+      document.getElementById('saveBtn').disabled = !(saveSheetMeta || saveCSV);
+    }
+
+    // ── Create output Google Sheet ──
+    async function createOutputSheet(title, tabsData) {
+      // tabsData = [{ title, headers, rows }]
+      const sheets = tabsData.map((t, i) => ({
+        properties: { sheetId: i, title: t.title, index: i },
+      }));
+
+      // Create the spreadsheet
+      const createResp = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          properties: { title },
+          sheets,
+        }),
+      });
+      if (!createResp.ok) throw new Error('Failed to create output sheet');
+      const created = await createResp.json();
+      const newId = created.spreadsheetId;
+
+      // Write data to each tab
+      const batchData = [];
+      for (const t of tabsData) {
+        if (t.rows.length === 0 && t.headers.length === 0) continue;
+        const values = [t.headers, ...t.rows];
+        batchData.push({ range: t.title + '!A1', values });
+      }
+
+      if (batchData.length > 0) {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${newId}/values:batchUpdate`, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            valueInputOption: 'RAW',
+            data: batchData,
+          }),
+        });
+      }
+
+      return created.spreadsheetUrl;
+    }
+
+    // ── Parse CSV response into rows ──
+    function parseCSVString(csvText) {
+      if (!csvText) return { headers: [], rows: [] };
+      const lines = csvText.split('\n').filter(l => l.trim());
+      if (lines.length === 0) return { headers: [], rows: [] };
+
+      const parse = (line) => {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (inQuotes) {
+            if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+            else if (ch === '"') { inQuotes = false; }
+            else { current += ch; }
+          } else {
+            if (ch === '"') { inQuotes = true; }
+            else if (ch === ',') { result.push(current); current = ''; }
+            else { current += ch; }
+          }
+        }
+        result.push(current);
+        return result;
+      };
+
+      const headers = parse(lines[0]);
+      const rows = lines.slice(1).map(l => parse(l));
+      return { headers, rows };
+    }
+
+    // ── Run Check ──
+    async function runCheck() {
+      const loading = document.getElementById('loading');
+      const errorBox = document.getElementById('errorBox');
+      const results = document.getElementById('results');
+      loading.classList.add('show');
+      document.getElementById('loadingText').textContent = 'Processing...';
+      errorBox.classList.add('hidden');
+      results.innerHTML = '';
+      document.getElementById('checkBtn').disabled = true;
+
+      try {
+        let csvText = checkCSV;
+
+        // If sheet URL provided, read from Google Sheets
+        if (sheetMeta && !csvText) {
+          document.getElementById('loadingText').textContent = 'Reading Google Sheet...';
+          const tabTitle = sheetMeta.sheets[selectedSheetTab].title;
+          csvText = await readSheetAsCSV(sheetMeta.id, tabTitle);
+        }
+
+        if (!csvText) throw new Error('No data to check. Paste a Sheet URL or upload a CSV.');
+
+        document.getElementById('loadingText').textContent = 'Checking against database...';
+        const clientSlug = document.getElementById('clientSelect').value;
+        const resp = await fetch(API_BASE + '/check-leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify({ csv_text: csvText, client_slug: clientSlug }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        const s = data.summary;
+
+        // If we have a Google Sheet source, create output sheet
+        let outputUrl = null;
+        if (sheetMeta) {
+          document.getElementById('loadingText').textContent = 'Creating output sheet...';
+          const alreadyParsed = parseCSVString(data.already_have_csv);
+          const needParsed = parseCSVString(data.need_enrichment_csv);
+          const dncParsed = parseCSVString(data.dnc_blocked_csv);
+
+          const tabTitle = sheetMeta.sheets[selectedSheetTab].title;
+          outputUrl = await createOutputSheet(
+            sheetMeta.title + ' - Phone DB Results',
+            [
+              { title: 'Already Have (' + s.already_have + ')', headers: alreadyParsed.headers, rows: alreadyParsed.rows },
+              { title: 'Need Enrichment (' + s.need_enrichment + ')', headers: needParsed.headers, rows: needParsed.rows },
+              { title: 'DNC Blocked (' + s.dnc_blocked + ')', headers: dncParsed.headers, rows: dncParsed.rows },
+            ]
+          );
+        }
+
+        // Render results
+        let h = '<div class="stats-row">';
+        h += '<div class="result-card"><h3>Already Have</h3><div class="count green">' + s.already_have + '</div></div>';
+        h += '<div class="result-card"><h3>Need Enrichment</h3><div class="count blue">' + s.need_enrichment + '</div></div>';
+        h += '<div class="result-card"><h3>DNC Blocked</h3><div class="count red">' + s.dnc_blocked + '</div></div>';
+        h += '</div>';
+
+        h += '<div class="result-card"><h3>Total rows processed</h3><div class="count">' + s.total + '</div>';
+        h += '<p style="color:#888;font-size:13px;margin-top:8px">Columns detected: Email=' + (s.columns_detected.email || 'none') + ', LinkedIn=' + (s.columns_detected.linkedin || 'none') + ', Domain=' + (s.columns_detected.domain || 'none') + '</p></div>';
+
+        if (outputUrl) {
+          h += '<a href="' + outputUrl + '" target="_blank" class="output-link">&#x1F4CA; Open results in Google Sheets</a>';
+        } else {
+          // CSV download fallback
+          h += '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">';
+          if (s.already_have > 0) h += '<div class="download-btn" onclick="downloadCSV(window._alreadyCSV,\'already_have.csv\')" style="display:inline-block;padding:8px 16px;background:#2a2a2a;color:#22c55e;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:13px">Already Have CSV</div>';
+          if (s.need_enrichment > 0) h += '<div class="download-btn" onclick="downloadCSV(window._needCSV,\'need_enrichment.csv\')" style="display:inline-block;padding:8px 16px;background:#2a2a2a;color:#4f8ff7;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:13px">Need Enrichment CSV</div>';
+          if (s.dnc_blocked > 0) h += '<div class="download-btn" onclick="downloadCSV(window._dncCSV,\'dnc_blocked.csv\')" style="display:inline-block;padding:8px 16px;background:#2a2a2a;color:#ef4444;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:13px">DNC Blocked CSV</div>';
+          h += '</div>';
+          window._alreadyCSV = data.already_have_csv;
+          window._needCSV = data.need_enrichment_csv;
+          window._dncCSV = data.dnc_blocked_csv;
+        }
+
+        results.innerHTML = h;
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+      } finally {
+        loading.classList.remove('show');
+        document.getElementById('checkBtn').disabled = false;
+      }
+    }
+
+    // ── Run Save ──
+    async function runSave() {
+      const loading = document.getElementById('loading');
+      const errorBox = document.getElementById('errorBox');
+      const results = document.getElementById('results');
+      loading.classList.add('show');
+      document.getElementById('loadingText').textContent = 'Processing...';
+      errorBox.classList.add('hidden');
+      results.innerHTML = '';
+      document.getElementById('saveBtn').disabled = true;
+
+      try {
+        let csvText = saveCSV;
+
+        if (saveSheetMeta && !csvText) {
+          document.getElementById('loadingText').textContent = 'Reading Google Sheet...';
+          const tabTitle = saveSheetMeta.sheets[selectedSaveTab].title;
+          csvText = await readSheetAsCSV(saveSheetMeta.id, tabTitle);
+        }
+
+        if (!csvText) throw new Error('No data to save. Paste a Sheet URL or upload a CSV.');
+
+        document.getElementById('loadingText').textContent = 'Saving to database...';
+        const sourceTag = document.getElementById('sourceTag').value || 'web_upload';
+        const resp = await fetch(API_BASE + '/save-leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify({ csv_text: csvText, source_tag: sourceTag }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        const s = data.summary;
+        let h = '<div class="stats-row">';
+        h += '<div class="result-card"><h3>New Contacts</h3><div class="count green">' + s.new_contacts_saved + '</div></div>';
+        h += '<div class="result-card"><h3>Updated</h3><div class="count blue">' + s.existing_updated + '</div></div>';
+        h += '<div class="result-card"><h3>Already Had Phone</h3><div class="count yellow">' + s.already_had_phone + '</div></div>';
+        h += '</div>';
+        h += '<div class="result-card"><h3>Summary</h3>';
+        h += '<p style="margin-top:8px;color:#888">' + s.total + ' rows processed. ' + s.invalid_phone + ' had invalid phone numbers.</p>';
+        h += '<p style="color:#888;font-size:13px;margin-top:8px">Columns detected: Email=' + (s.columns_detected.email || 'none') + ', Phone=' + (s.columns_detected.phone || 'none') + '</p></div>';
+
+        results.innerHTML = h;
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+      } finally {
+        loading.classList.remove('show');
+        document.getElementById('saveBtn').disabled = false;
+      }
+    }
+
+    // ── CSV download helper ──
+    function downloadCSV(content, filename) {
+      const blob = new Blob([content], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ── Error helper ──
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      box.textContent = msg;
+      box.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
