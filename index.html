@@ -17,6 +17,9 @@
       --output-bg: #1a2e1a; --output-border: #2a4a2a;
       --disabled-bg: #333; --disabled-text: #666;
       --logo-filter: invert(1);
+      --toggle-text: #fff;
+      --details-bg: #151515; --details-border: #2a2a2a;
+      --details-text: #999; --details-heading: #ccc;
       --google-btn-bg: #fff; --google-btn-text: #333; --google-btn-border: #ddd;
     }
     body.light {
@@ -27,6 +30,9 @@
       --output-bg: #ecfdf5; --output-border: #a7f3d0;
       --disabled-bg: #e0e0e0; --disabled-text: #999;
       --logo-filter: none;
+      --toggle-text: #111;
+      --details-bg: #fff; --details-border: #e0e0e0;
+      --details-text: #555; --details-heading: #333;
       --google-btn-bg: #fff; --google-btn-text: #333; --google-btn-border: #ccc;
     }
 
@@ -39,7 +45,7 @@
     h1 { font-size: 24px; font-weight: 600; color: var(--text-heading); }
     .subtitle { color: var(--text-muted); margin-bottom: 32px; font-size: 14px; }
 
-    .theme-toggle { position: fixed; top: 16px; right: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 18px; line-height: 1; z-index: 100; transition: background 0.3s; }
+    .theme-toggle { position: fixed; top: 16px; right: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 20px; line-height: 1; z-index: 100; transition: background 0.3s; color: var(--toggle-text); }
     .theme-toggle:hover { border-color: var(--accent); }
 
     .login-section { text-align: center; padding: 48px 0; }
@@ -128,36 +134,36 @@
     </div>
     <p class="subtitle">Check your lead lists against the LLG phone number database before enriching.</p>
 
-    <details style="background:#151515;border:1px solid #2a2a2a;border-radius:10px;padding:16px 20px;margin-bottom:24px;cursor:pointer;">
-      <summary style="font-size:14px;font-weight:500;color:#4f8ff7;list-style:none;display:flex;align-items:center;gap:6px;">
+    <details style="background:var(--details-bg);border:1px solid var(--details-border);border-radius:10px;padding:16px 20px;margin-bottom:24px;cursor:pointer;">
+      <summary style="font-size:14px;font-weight:500;color:var(--accent);list-style:none;display:flex;align-items:center;gap:6px;">
         <span style="font-size:11px;">&#9660;</span> How it works
       </summary>
-      <div style="margin-top:14px;font-size:13px;color:#999;line-height:1.7;">
-        <p style="margin-bottom:12px;">LLG has <strong style="color:#ccc;">460,000+ contacts</strong> with phone numbers collected across all clients. Before you pay to enrich a new lead list, use this tool to check which contacts we already have numbers for &mdash; so you only enrich what's actually needed.</p>
-        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 1: Check your list</p>
+      <div style="margin-top:14px;font-size:13px;color:var(--details-text);line-height:1.7;">
+        <p style="margin-bottom:12px;">LLG has <strong style="color:var(--details-heading);">460,000+ contacts</strong> with phone numbers collected across all clients. Before you pay to enrich a new lead list, use this tool to check which contacts we already have numbers for &mdash; so you only enrich what's actually needed.</p>
+        <p style="margin-bottom:6px;color:var(--details-heading);font-weight:500;">Step 1: Check your list</p>
         <ol style="margin:0 0 12px 18px;">
           <li>Sign in with your @lynnleadgen.com Google account</li>
           <li>Paste the Google Sheet URL of the lead list you want to check</li>
-          <li>Select the client (for DNC filtering) and click <strong style="color:#ccc;">Check List</strong></li>
+          <li>Select the client (for DNC filtering) and click <strong style="color:var(--details-heading);">Check List</strong></li>
           <li>The tool creates a new Google Sheet with three tabs:
             <ul style="margin:4px 0 4px 16px;list-style:disc;">
-              <li><strong style="color:#22c55e;">Already Have</strong> &mdash; we have phone numbers for these contacts</li>
-              <li><strong style="color:#4f8ff7;">Need Enrichment</strong> &mdash; no phone number on file, these need scraping</li>
-              <li><strong style="color:#ef4444;">DNC Blocked</strong> &mdash; on the client's Do Not Contact list, skip these</li>
+              <li><strong style="color:var(--green);">Already Have</strong> &mdash; we have phone numbers for these contacts</li>
+              <li><strong style="color:var(--accent);">Need Enrichment</strong> &mdash; no phone number on file, these need scraping</li>
+              <li><strong style="color:var(--red);">DNC Blocked</strong> &mdash; on the client's Do Not Contact list, skip these</li>
             </ul>
           </li>
         </ol>
-        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 2: Enrich the gaps</p>
+        <p style="margin-bottom:6px;color:var(--details-heading);font-weight:500;">Step 2: Enrich the gaps</p>
         <p style="margin:0 0 12px 0;">Take the "Need Enrichment" tab and run it through your enrichment source (Apollo (Roy), Clay, Wiza, etc.)</p>
-        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 3: Upload enriched numbers</p>
+        <p style="margin-bottom:6px;color:var(--details-heading);font-weight:500;">Step 3: Upload enriched numbers</p>
         <ol style="margin:0 0 12px 18px;">
-          <li>Switch to the <strong style="color:#ccc;">Save New Numbers</strong> tab</li>
+          <li>Switch to the <strong style="color:var(--details-heading);">Save New Numbers</strong> tab</li>
           <li>Select the client you enriched for</li>
           <li>Paste the Google Sheet URL of your enriched list (must have a Phone column)</li>
-          <li>Click <strong style="color:#ccc;">Save Numbers to Database</strong></li>
+          <li>Click <strong style="color:var(--details-heading);">Save Numbers to Database</strong></li>
           <li>The new numbers are added to the master database and linked to the client</li>
         </ol>
-        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Phone number formatting</p>
+        <p style="margin-bottom:6px;color:var(--details-heading);font-weight:500;">Phone number formatting</p>
         <p style="margin:0 0 0 0;">No need to clean up phone numbers or rename columns before uploading. The tool automatically detects any column containing "phone", "mobile", "cell", or "tel" in the header (e.g. Phone Number 1, Mobile Number, Cell Phone). If there are multiple phone columns, it picks the first valid number for each contact. All numbers are automatically formatted to international standard (+digits only), regardless of how they come from Apollo, Clay, or Wiza. Spaces, brackets, dashes, and other special characters are all stripped. Invalid or junk values are skipped.</p>
       </div>
     </details>
