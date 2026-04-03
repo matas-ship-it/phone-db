@@ -99,7 +99,39 @@
       <img src="logo.png" alt="Lynn Lead Gen">
       <h1>Phone Database</h1>
     </div>
-    <p class="subtitle">Check lead lists against 460K+ contacts. Save new phone numbers.</p>
+    <p class="subtitle">Check your lead lists against the LLG phone number database before enriching.</p>
+
+    <details style="background:#151515;border:1px solid #2a2a2a;border-radius:10px;padding:16px 20px;margin-bottom:24px;cursor:pointer;">
+      <summary style="font-size:14px;font-weight:500;color:#4f8ff7;list-style:none;display:flex;align-items:center;gap:6px;">
+        <span style="font-size:11px;">&#9660;</span> How it works
+      </summary>
+      <div style="margin-top:14px;font-size:13px;color:#999;line-height:1.7;">
+        <p style="margin-bottom:12px;">LLG has <strong style="color:#ccc;">460,000+ contacts</strong> with phone numbers collected across all clients. Before you pay to enrich a new lead list, use this tool to check which contacts we already have numbers for &mdash; so you only enrich what's actually needed.</p>
+        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 1: Check your list</p>
+        <ol style="margin:0 0 12px 18px;">
+          <li>Sign in with your @lynnleadgen.com Google account</li>
+          <li>Paste the Google Sheet URL of the lead list you want to check</li>
+          <li>Select the client (for DNC filtering) and click <strong style="color:#ccc;">Check List</strong></li>
+          <li>The tool creates a new Google Sheet with three tabs:
+            <ul style="margin:4px 0 4px 16px;list-style:disc;">
+              <li><strong style="color:#22c55e;">Already Have</strong> &mdash; we have phone numbers for these contacts</li>
+              <li><strong style="color:#4f8ff7;">Need Enrichment</strong> &mdash; no phone number on file, these need scraping</li>
+              <li><strong style="color:#ef4444;">DNC Blocked</strong> &mdash; on the client's Do Not Contact list, skip these</li>
+            </ul>
+          </li>
+        </ol>
+        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 2: Enrich the gaps</p>
+        <p style="margin:0 0 12px 0;">Take the "Need Enrichment" tab and run it through your enrichment source (Apollo, Clay, Wiza, etc.)</p>
+        <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Step 3: Upload enriched numbers</p>
+        <ol style="margin:0 0 0 18px;">
+          <li>Switch to the <strong style="color:#ccc;">Save New Numbers</strong> tab</li>
+          <li>Select the client you enriched for</li>
+          <li>Paste the Google Sheet URL of your enriched list (must have a Phone column)</li>
+          <li>Click <strong style="color:#ccc;">Save Numbers to Database</strong></li>
+          <li>The new numbers are added to the master database and linked to the client</li>
+        </ol>
+      </div>
+    </details>
 
     <!-- Login Section -->
     <div id="loginSection" class="login-section">
@@ -168,7 +200,14 @@
       <!-- SAVE MODE -->
       <div id="saveMode" class="hidden">
         <div class="form-group">
-          <label>Source tag (e.g. apollo, clay, wiza)</label>
+          <label>Client</label>
+          <select id="saveClientSelect">
+            <option value="">-- Select client --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Source (e.g. apollo, clay, wiza)</label>
           <input type="text" id="sourceTag" placeholder="web_upload" value="web_upload">
         </div>
 
@@ -285,16 +324,18 @@
       document.getElementById('userName').textContent = userProfile.name;
       document.getElementById('userEmail').textContent = userProfile.email;
 
-      // Populate client dropdown
-      const sel = document.getElementById('clientSelect');
-      if (sel.options.length <= 1) {
-        CLIENTS.forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c;
-          opt.textContent = c.charAt(0).toUpperCase() + c.slice(1).replace(/-/g, ' ');
-          sel.appendChild(opt);
-        });
-      }
+      // Populate client dropdowns
+      ['clientSelect', 'saveClientSelect'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel.options.length <= 1) {
+          CLIENTS.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c.charAt(0).toUpperCase() + c.slice(1).replace(/-/g, ' ');
+            sel.appendChild(opt);
+          });
+        }
+      });
     }
 
     function signOut() {
@@ -689,12 +730,15 @@
 
         if (!csvText) throw new Error('No data to save. Paste a Sheet URL or upload a CSV.');
 
+        const clientSlug = document.getElementById('saveClientSelect').value;
+        if (!clientSlug) throw new Error('Please select a client.');
+
         document.getElementById('loadingText').textContent = 'Saving to database...';
         const sourceTag = document.getElementById('sourceTag').value || 'web_upload';
         const resp = await fetch(API_BASE + '/save-leads', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
-          body: JSON.stringify({ csv_text: csvText, source_tag: sourceTag }),
+          body: JSON.stringify({ csv_text: csvText, source_tag: sourceTag, client_slug: clientSlug }),
         });
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
