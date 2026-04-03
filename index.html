@@ -517,7 +517,8 @@
           list.innerHTML = data.recent_activity.slice(0, 10).map(a => {
             const actionLabels = { check_list: 'Checked a list', save_numbers: 'Saved numbers', add_dnc: 'Added to DNC' };
             const label = actionLabels[a.action] || a.action;
-            const user = a.user_email ? a.user_email.split('@')[0] : 'System';
+            const rawUser = a.user_email ? a.user_email.split('@')[0] : 'System';
+            const user = rawUser.charAt(0).toUpperCase() + rawUser.slice(1);
             const client = a.client_slug ? ` (${a.client_slug})` : '';
             const count = a.details?.count ? ` - ${a.details.count} contacts` : '';
             const time = timeAgo(new Date(a.created_at));
