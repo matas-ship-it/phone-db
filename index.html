@@ -131,7 +131,7 @@
           <li>The new numbers are added to the master database and linked to the client</li>
         </ol>
         <p style="margin-bottom:6px;color:#ccc;font-weight:500;">Phone number formatting</p>
-        <p style="margin:0 0 0 0;">No need to clean up phone numbers before uploading. The tool automatically formats all numbers to international standard (+digits only), regardless of how they come from Apollo, Clay, or Wiza. Spaces, brackets, dashes, and other special characters are all stripped automatically. Invalid or junk values are skipped.</p>
+        <p style="margin:0 0 0 0;">No need to clean up phone numbers or rename columns before uploading. The tool automatically detects any column containing "phone", "mobile", "cell", or "tel" in the header (e.g. Phone Number 1, Mobile Number, Cell Phone). If there are multiple phone columns, it picks the first valid number for each contact. All numbers are automatically formatted to international standard (+digits only), regardless of how they come from Apollo, Clay, or Wiza. Spaces, brackets, dashes, and other special characters are all stripped. Invalid or junk values are skipped.</p>
       </div>
     </details>
 
@@ -216,7 +216,7 @@
         <div class="form-group">
           <label>Google Sheet URL</label>
           <input type="url" id="saveSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..." oninput="onSaveSheetUrlChange()">
-          <div class="hint">Sheet must have a Phone column.</div>
+          <div class="hint">Sheet must have a column with "phone", "mobile", "cell", or "tel" in the header.</div>
         </div>
 
         <div id="saveSheetPreview" class="sheet-preview hidden">
