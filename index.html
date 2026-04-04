@@ -1243,22 +1243,10 @@
     }
 
     // ── Queue state ──
-    // Each item: { name, type:'sheet'|'csv', sheetId, sheetTab, csvText, status:'waiting'|'processing'|'done'|'error', result:{} }
+    // Each item: { name, type, sheetId, sheetTab, csvText, status, stage, pipelineData, mvFileId, bbTaskId, mvResults, bbResults, result }
     let queue = [];
-    let allVerifiedRows = [];
-    let allCatchallRows = [];
-    let allBadRows = [];
     let allHeaders = null;
-    let currentQueueIdx = -1;
-
-    // Per-item pipeline state
-    let pipelineData = null;
-    let mvFileId = null;
-    let bbTaskId = null;
-    let mvResults = {};
-    let bbResults = {};
     let pollTimer = null;
-    let currentItemName = '';
 
     function renderQueue() {
       const section = document.getElementById('queueSection');
@@ -1276,16 +1264,18 @@
       document.getElementById('cleanBtn').disabled = false;
 
       list.innerHTML = queue.map((item, i) => {
-        const statusColors = { waiting: 'var(--text-faint)', processing: 'var(--accent)', done: 'var(--green)', error: 'var(--red)' };
-        const statusIcons = { waiting: '&#9679;', processing: '&#9881;', done: '&#10003;', error: '&#10007;' };
-        const color = statusColors[item.status] || 'var(--text-faint)';
-        const icon = statusIcons[item.status] || '';
+        const statusColors = { waiting: 'var(--text-faint)', cleaning: 'var(--accent)', mv: '#8b5cf6', bb: 'var(--yellow)', done: 'var(--green)', error: 'var(--red)' };
+        const statusLabels = { waiting: 'waiting', cleaning: 'cleaning...', mv: 'MV verifying...', bb: 'BB verifying...', done: 'done', error: 'error' };
+        const statusIcons = { waiting: '&#9679;', cleaning: '&#9881;', mv: '&#9881;', bb: '&#9881;', done: '&#10003;', error: '&#10007;' };
+        const color = statusColors[item.stage] || 'var(--text-faint)';
+        const icon = statusIcons[item.stage] || '';
+        const label = statusLabels[item.stage] || item.stage;
         const resultText = item.result ? ` — ${item.result.verified || 0} verified` : '';
         return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;">
           <span style="color:${color};font-size:16px;">${icon}</span>
           <span style="flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${item.name}">${item.name}</span>
-          <span style="font-size:12px;color:${color};">${item.status}${resultText}</span>
-          ${item.status === 'waiting' ? `<button onclick="removeFromQueue(${i})" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;">&times;</button>` : ''}
+          <span style="font-size:12px;color:${color};">${label}${resultText}</span>
+          ${item.stage === 'waiting' ? `<button onclick="removeFromQueue(${i})" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;">&times;</button>` : ''}
         </div>`;
       }).join('');
     }
@@ -1299,10 +1289,14 @@
         sheetId: cleanSheetMeta.id,
         sheetTab: tabTitle,
         csvText: null,
-        status: 'waiting',
+        stage: 'waiting',
+        pipelineData: null,
+        mvFileId: null,
+        bbTaskId: null,
+        mvResults: {},
+        bbResults: {},
         result: null,
       });
-      // Clear input for next add
       document.getElementById('cleanSheetUrl').value = '';
       document.getElementById('cleanSheetPreview').classList.add('hidden');
       cleanSheetMeta = null;
@@ -1317,17 +1311,16 @@
           queue.push({
             name: file.name.replace(/\.csv$/i, ''),
             type: 'csv',
-            sheetId: null,
-            sheetTab: null,
+            sheetId: null, sheetTab: null,
             csvText: e.target.result,
-            status: 'waiting',
-            result: null,
+            stage: 'waiting',
+            pipelineData: null, mvFileId: null, bbTaskId: null, mvResults: {}, bbResults: {}, result: null,
           });
           renderQueue();
         };
         reader.readAsText(file);
       }
-      input.value = ''; // reset so same files can be re-added
+      input.value = '';
     }
 
     function removeFromQueue(idx) {
@@ -1336,7 +1329,7 @@
     }
 
     function clearQueue() {
-      queue = queue.filter(q => q.status === 'processing');
+      queue = queue.filter(q => q.stage !== 'waiting');
       renderQueue();
     }
 
@@ -1359,15 +1352,7 @@
       document.getElementById('pipelineStage').textContent = text;
     }
 
-    function resetPipelineUI() {
-      [1,2,3,4].forEach(s => setPipelineStep(s, 0, 'var(--border)'));
-      document.getElementById('pipelineCounts').classList.add('hidden');
-      document.getElementById('mvGoodCount').textContent = '0';
-      document.getElementById('mvCatchallCount').textContent = '0';
-      document.getElementById('mvBadCount').textContent = '0';
-    }
-
-    // ── Run full queue ──
+    // ── Parallel pipeline ──
     async function runClean() {
       const errorBox = document.getElementById('errorBox');
       const results = document.getElementById('results');
@@ -1375,297 +1360,256 @@
       errorBox.classList.add('hidden');
       results.innerHTML = '';
       document.getElementById('cleanBtn').disabled = true;
-
-      // Reset combined results
-      allVerifiedRows = [];
-      allCatchallRows = [];
-      allBadRows = [];
       allHeaders = null;
 
       progress.classList.remove('hidden');
-      currentQueueIdx = 0;
-      await processNextInQueue();
-    }
+      document.getElementById('pipelineCounts').classList.remove('hidden');
 
-    async function processNextInQueue() {
-      if (currentQueueIdx >= queue.length) {
-        // All done — produce combined output
-        await produceCombinedOutput();
-        return;
-      }
+      // Step 1: Clean ALL lists first (fast, synchronous)
+      setPipelineStage('Cleaning all lists...');
+      setPipelineStep(1, 10, 'var(--accent)');
 
-      const item = queue[currentQueueIdx];
-      if (item.status !== 'waiting') {
-        currentQueueIdx++;
-        await processNextInQueue();
-        return;
-      }
-
-      item.status = 'processing';
-      currentItemName = item.name;
-      renderQueue();
-      resetPipelineUI();
-
-      const queueLabel = `List ${currentQueueIdx + 1}/${queue.length}: ${item.name}`;
-
-      try {
-        // === STEP 1: Clean ===
-        setPipelineStage(queueLabel);
-        setPipelineStatus('Cleaning Apollo columns...');
-        setPipelineStep(1, 50, 'var(--accent)');
-
-        let csvText = item.csvText;
-        if (item.type === 'sheet' && !csvText) {
-          setPipelineStatus('Reading Google Sheet...');
-          csvText = await readSheetAsCSV(item.sheetId, item.sheetTab);
-        }
-        if (!csvText) throw new Error('No data for ' + item.name);
-
-        const result = cleanApolloData(csvText);
-        pipelineData = result;
-        if (!allHeaders) allHeaders = result.headers;
-
-        setPipelineStep(1, 100, 'var(--green)');
-        setPipelineStatus(`Cleaned: ${result.stats.clean_rows} leads, ${result.stats.cols_dropped} cols dropped, ${result.stats.dupes_removed} dupes removed.`);
-
-        // === STEP 2: Upload to MV ===
-        setPipelineStatus('Uploading to MillionVerifier...');
-        setPipelineStep(2, 5, 'var(--accent)');
-
-        const emailIdx = result.headers.indexOf('email');
-        const emails = result.rows.map(r => r[emailIdx]).filter(e => e);
-
-        const mvUploadResp = await fetch(API_BASE + '/verify-emails', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
-          body: JSON.stringify({ stage: 'mv', emails, name: item.name + ' - ' + new Date().toLocaleDateString() }),
-        });
-        const mvUpload = await mvUploadResp.json();
-        if (mvUpload.error) throw new Error('MV upload failed: ' + mvUpload.error);
-        mvFileId = mvUpload.file_id;
-        mvResults = {};
-        bbResults = {};
-
-        setPipelineStatus(`MV processing ${emails.length.toLocaleString()} emails...`);
-        setPipelineStep(2, 15, 'var(--accent)');
-        document.getElementById('pipelineCounts').classList.remove('hidden');
-
-        pollMvStatus();
-
-      } catch (err) {
-        item.status = 'error';
-        item.result = { error: err.message };
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        if (item.stage !== 'waiting') continue;
+        item.stage = 'cleaning';
         renderQueue();
-        currentQueueIdx++;
-        await processNextInQueue();
+
+        try {
+          let csvText = item.csvText;
+          if (item.type === 'sheet' && !csvText) {
+            setPipelineStatus(`Reading sheet: ${item.name}...`);
+            csvText = await readSheetAsCSV(item.sheetId, item.sheetTab);
+          }
+          if (!csvText) throw new Error('No data for ' + item.name);
+
+          const result = cleanApolloData(csvText);
+          item.pipelineData = result;
+          if (!allHeaders) allHeaders = result.headers;
+
+          setPipelineStatus(`Cleaned ${item.name}: ${result.stats.clean_rows} leads`);
+        } catch (err) {
+          item.stage = 'error';
+          item.result = { error: err.message, verified: 0, catchall: 0, bad: 0, input: 0, cleaned: 0 };
+          renderQueue();
+          continue;
+        }
+
+        const pct = Math.round(((i + 1) / queue.length) * 100);
+        setPipelineStep(1, pct, 'var(--accent)');
       }
+      setPipelineStep(1, 100, 'var(--green)');
+
+      // Step 2: Upload ALL to MV in parallel
+      setPipelineStage('Uploading to MillionVerifier...');
+      setPipelineStep(2, 5, 'var(--accent)');
+
+      const toProcess = queue.filter(q => q.stage === 'cleaning');
+      const uploadPromises = toProcess.map(async (item) => {
+        const emailIdx = item.pipelineData.headers.indexOf('email');
+        const emails = item.pipelineData.rows.map(r => r[emailIdx]).filter(e => e);
+
+        try {
+          const resp = await fetch(API_BASE + '/verify-emails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+            body: JSON.stringify({ stage: 'mv', emails, name: item.name }),
+          });
+          const data = await resp.json();
+          if (data.error) throw new Error(data.error);
+          item.mvFileId = data.file_id;
+          item.stage = 'mv';
+        } catch (err) {
+          item.stage = 'error';
+          item.result = { error: 'MV upload: ' + err.message, verified: 0, catchall: 0, bad: 0, input: item.pipelineData.stats.original_rows, cleaned: item.pipelineData.stats.clean_rows };
+        }
+      });
+
+      await Promise.all(uploadPromises);
+      renderQueue();
+      setPipelineStep(2, 15, 'var(--accent)');
+      setPipelineStatus(`${toProcess.filter(q => q.stage === 'mv').length} lists uploaded to MV. Polling...`);
+
+      // Start unified poll loop
+      pollAllJobs();
     }
 
-    async function pollMvStatus() {
-      try {
-        const resp = await fetch(API_BASE + '/verify-emails?action=mv_status&file_id=' + mvFileId, {
-          headers: { 'x-app-password': APP_PASSWORD },
-        });
-        const data = await resp.json();
+    function getActiveCount() {
+      return queue.filter(q => q.stage === 'mv' || q.stage === 'bb').length;
+    }
 
-        const total = data.quantity || 0;
-        const done = (data.ok || 0) + (data.catch_all || 0) + (data.bad || 0);
-        const pct = total > 0 ? Math.min(95, 15 + Math.round((done / total) * 80)) : 15;
+    function getDoneCount() {
+      return queue.filter(q => q.stage === 'done').length;
+    }
 
-        document.getElementById('mvGoodCount').textContent = (data.ok || 0).toLocaleString();
-        document.getElementById('mvCatchallCount').textContent = (data.catch_all || 0).toLocaleString();
-        document.getElementById('mvBadCount').textContent = (data.bad || 0).toLocaleString();
-        setPipelineStep(2, pct, 'var(--accent)');
+    function updateProgressUI() {
+      const total = queue.length;
+      const done = getDoneCount();
+      const mvActive = queue.filter(q => q.stage === 'mv').length;
+      const bbActive = queue.filter(q => q.stage === 'bb').length;
 
-        const queueLabel = `List ${currentQueueIdx + 1}/${queue.length}: ${currentItemName}`;
-        setPipelineStage(queueLabel);
-        setPipelineStatus(`MV: ${data.status} — ${(data.ok||0)} good, ${(data.catch_all||0)} catch-all, ${(data.bad||0)} bad`);
+      // Aggregate counts across all items
+      let totalGood = 0, totalCatchall = 0, totalBad = 0;
+      for (const item of queue) {
+        if (item.result) {
+          totalGood += item.result.verified || 0;
+          totalCatchall += item.result.catchall || 0;
+          totalBad += item.result.bad || 0;
+        }
+      }
+      document.getElementById('mvGoodCount').textContent = totalGood.toLocaleString();
+      document.getElementById('mvCatchallCount').textContent = totalCatchall.toLocaleString();
+      document.getElementById('mvBadCount').textContent = totalBad.toLocaleString();
 
-        if (data.status === 'finished') {
-          setPipelineStatus('Downloading MV results...');
-          const dlResp = await fetch(API_BASE + '/verify-emails?action=mv_download&file_id=' + mvFileId, {
+      const mvPct = mvActive > 0 ? 50 : 100;
+      const bbPct = bbActive > 0 ? 50 : (done > 0 ? 100 : 0);
+      setPipelineStep(2, queue.filter(q => q.stage !== 'mv' && q.stage !== 'cleaning').length > 0 ? 100 : mvPct, queue.filter(q => q.stage === 'mv').length === 0 ? 'var(--green)' : 'var(--accent)');
+      setPipelineStep(3, bbActive > 0 ? 50 : (done > 0 ? 100 : 0), bbActive > 0 ? 'var(--accent)' : (done > 0 ? 'var(--green)' : 'var(--border)'));
+
+      setPipelineStage(`${done}/${total} complete` + (mvActive > 0 ? ` | ${mvActive} in MV` : '') + (bbActive > 0 ? ` | ${bbActive} in BB` : ''));
+      setPipelineStatus(mvActive + bbActive > 0 ? `Processing... ${mvActive} in MV, ${bbActive} in BB, ${done} done` : 'All verification complete!');
+    }
+
+    async function pollAllJobs() {
+      const mvItems = queue.filter(q => q.stage === 'mv');
+      const bbItems = queue.filter(q => q.stage === 'bb');
+
+      // Poll all MV jobs
+      for (const item of mvItems) {
+        try {
+          const resp = await fetch(API_BASE + '/verify-emails?action=mv_status&file_id=' + item.mvFileId, {
             headers: { 'x-app-password': APP_PASSWORD },
           });
-          const dlData = await dlResp.json();
-          mvResults = dlData.results || {};
-          setPipelineStep(2, 100, 'var(--green)');
+          const data = await resp.json();
 
-          // Integrity check: MV result count vs input count
-          const inputCount = pipelineData.rows.length;
-          const mvCount = Object.keys(mvResults).length;
-          if (Math.abs(inputCount - mvCount) > Math.max(5, inputCount * 0.02)) {
-            setPipelineStatus(`Warning: MV returned ${mvCount} results for ${inputCount} emails. ${Math.abs(inputCount - mvCount)} unaccounted for.`);
-            await new Promise(r => setTimeout(r, 2000)); // brief pause to show warning
+          if (data.status === 'finished') {
+            // Download results
+            const dlResp = await fetch(API_BASE + '/verify-emails?action=mv_download&file_id=' + item.mvFileId, {
+              headers: { 'x-app-password': APP_PASSWORD },
+            });
+            const dlData = await dlResp.json();
+            item.mvResults = dlData.results || {};
+
+            // Find catch-alls
+            const catchalls = Object.entries(item.mvResults).filter(([_, q]) => q === 'risky').map(([e]) => e);
+
+            if (catchalls.length > 0) {
+              // Upload to BB
+              try {
+                const bbResp = await fetch(API_BASE + '/verify-emails', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+                  body: JSON.stringify({ stage: 'bb', emails: catchalls, name: item.name + ' - catchall' }),
+                });
+                const bbData = await bbResp.json();
+                if (bbData.error) throw new Error(bbData.error);
+                item.bbTaskId = bbData.task_id;
+                item.stage = 'bb';
+              } catch (err) {
+                // BB failed, finalize with MV only
+                classifyItem(item);
+              }
+            } else {
+              // No catch-alls, finalize
+              classifyItem(item);
+            }
           }
-
-          const catchall = [];
-          for (const [email, quality] of Object.entries(mvResults)) {
-            if (quality === 'risky') catchall.push(email);
-          }
-
-          document.getElementById('mvGoodCount').textContent = Object.values(mvResults).filter(q => q === 'good' || q === 'quality').length.toLocaleString();
-          document.getElementById('mvCatchallCount').textContent = catchall.length.toLocaleString();
-          document.getElementById('mvBadCount').textContent = Object.values(mvResults).filter(q => q !== 'good' && q !== 'quality' && q !== 'risky').length.toLocaleString();
-
-          if (catchall.length > 0) {
-            await startBounceBan(catchall);
-          } else {
-            setPipelineStep(3, 100, 'var(--green)');
-            await finalizeItem();
-          }
-        } else {
-          pollTimer = setTimeout(pollMvStatus, 30000);
+        } catch (err) {
+          console.error('MV poll error for ' + item.name, err);
         }
-      } catch (err) {
-        setPipelineStatus('MV poll error: ' + err.message + '. Retrying...');
-        pollTimer = setTimeout(pollMvStatus, 30000);
       }
-    }
 
-    async function startBounceBan(catchallEmails) {
-      try {
-        setPipelineStatus(`Uploading ${catchallEmails.length} catch-alls to BounceBan...`);
-        setPipelineStep(3, 10, 'var(--accent)');
-
-        const bbResp = await fetch(API_BASE + '/verify-emails', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
-          body: JSON.stringify({ stage: 'bb', emails: catchallEmails, name: currentItemName + ' - catchall' }),
-        });
-        const bbData = await bbResp.json();
-        if (bbData.error) throw new Error('BB upload failed: ' + bbData.error);
-        bbTaskId = bbData.task_id;
-
-        setPipelineStatus(`BounceBan verifying ${catchallEmails.length} catch-alls...`);
-        setPipelineStep(3, 15, 'var(--accent)');
-        pollBbStatus();
-      } catch (err) {
-        setPipelineStatus('BB error: ' + err.message + '. Using MV results only.');
-        setPipelineStep(3, 100, 'var(--yellow)');
-        await finalizeItem();
-      }
-    }
-
-    async function pollBbStatus() {
-      try {
-        const resp = await fetch(API_BASE + '/verify-emails?action=bb_status&task_id=' + bbTaskId, {
-          headers: { 'x-app-password': APP_PASSWORD },
-        });
-        const data = await resp.json();
-
-        const pct = data.total > 0 ? Math.min(95, 15 + Math.round(((data.verified || 0) / data.total) * 80)) : 15;
-        setPipelineStep(3, pct, 'var(--accent)');
-        const queueLabel = `List ${currentQueueIdx + 1}/${queue.length}: ${currentItemName}`;
-        setPipelineStage(queueLabel);
-        setPipelineStatus(`BB: ${data.status} — ${(data.verified||0)} / ${(data.total||0)} verified`);
-
-        if (data.status === 'finished') {
-          setPipelineStatus('Downloading BB results...');
-          const dlResp = await fetch(API_BASE + '/verify-emails?action=bb_download&task_id=' + bbTaskId, {
+      // Poll all BB jobs
+      for (const item of bbItems) {
+        try {
+          const resp = await fetch(API_BASE + '/verify-emails?action=bb_status&task_id=' + item.bbTaskId, {
             headers: { 'x-app-password': APP_PASSWORD },
           });
-          const dlData = await dlResp.json();
-          bbResults = dlData.results || {};
-          setPipelineStep(3, 100, 'var(--green)');
+          const data = await resp.json();
 
-          // BB integrity check
-          const catchallCount = Object.values(mvResults).filter(q => q === 'risky').length;
-          const bbCount = Object.keys(bbResults).length;
-          if (Math.abs(catchallCount - bbCount) > Math.max(3, catchallCount * 0.02)) {
-            setPipelineStatus(`Warning: BB returned ${bbCount} results for ${catchallCount} catch-alls.`);
-            await new Promise(r => setTimeout(r, 2000));
+          if (data.status === 'finished') {
+            const dlResp = await fetch(API_BASE + '/verify-emails?action=bb_download&task_id=' + item.bbTaskId, {
+              headers: { 'x-app-password': APP_PASSWORD },
+            });
+            const dlData = await dlResp.json();
+            item.bbResults = dlData.results || {};
+            classifyItem(item);
           }
-
-          await finalizeItem();
-        } else {
-          pollTimer = setTimeout(pollBbStatus, 30000);
+        } catch (err) {
+          console.error('BB poll error for ' + item.name, err);
         }
-      } catch (err) {
-        setPipelineStatus('BB poll error: ' + err.message + '. Retrying...');
-        pollTimer = setTimeout(pollBbStatus, 30000);
+      }
+
+      renderQueue();
+      updateProgressUI();
+
+      // Check if all done
+      if (getActiveCount() === 0) {
+        await produceCombinedOutput();
+      } else {
+        pollTimer = setTimeout(pollAllJobs, 30000);
       }
     }
 
-    async function finalizeItem() {
-      setPipelineStep(4, 50, 'var(--accent)');
-      setPipelineStatus('Classifying results...');
-
-      const emailIdx = pipelineData.headers.indexOf('email');
-      const item = queue[currentQueueIdx];
-
+    function classifyItem(item) {
+      const emailIdx = item.pipelineData.headers.indexOf('email');
+      const today = new Date().toISOString().split('T')[0];
       let verified = 0, catchall = 0, bad = 0;
 
-      for (const row of pipelineData.rows) {
+      item.verifiedRows = [];
+      item.catchallRows = [];
+
+      for (const row of item.pipelineData.rows) {
         const email = (row[emailIdx] || '').toLowerCase();
-        const mvQ = mvResults[email] || 'unknown';
+        const mvQ = item.mvResults[email] || 'unknown';
 
         if (mvQ === 'good' || mvQ === 'quality') {
-          allVerifiedRows.push(row);
+          item.verifiedRows.push([...row, 'mv', today]);
           verified++;
         } else if (mvQ === 'risky') {
-          const bbQ = bbResults[email];
+          const bbQ = item.bbResults[email];
           if (bbQ === 'deliverable') {
-            allVerifiedRows.push(row);
+            item.verifiedRows.push([...row, 'bb', today]);
             verified++;
           } else if (bbQ) {
-            allBadRows.push(row);
             bad++;
           } else {
-            allCatchallRows.push(row);
+            item.catchallRows.push(row);
             catchall++;
           }
         } else {
-          allBadRows.push(row);
           bad++;
         }
       }
 
-      // Final integrity check for this item
-      const totalClassified = verified + catchall + bad;
-      const inputCount = pipelineData.rows.length;
-      if (Math.abs(totalClassified - inputCount) > 2) {
-        console.warn(`Integrity: ${item.name} — input ${inputCount}, classified ${totalClassified}, diff ${inputCount - totalClassified}`);
-      }
-
-      item.status = 'done';
-      item.result = { verified, catchall, bad, input: pipelineData.stats.original_rows, cleaned: pipelineData.stats.clean_rows };
-      renderQueue();
-
-      setPipelineStep(4, 100, 'var(--green)');
-      setPipelineStatus(`${item.name}: ${verified} verified, ${catchall} catch-all, ${bad} bad`);
-
-      // Move to next
-      currentQueueIdx++;
-      if (currentQueueIdx < queue.length) {
-        await new Promise(r => setTimeout(r, 1000)); // brief pause between items
-        await processNextInQueue();
-      } else {
-        await produceCombinedOutput();
-      }
+      item.stage = 'done';
+      item.result = { verified, catchall, bad, input: item.pipelineData.stats.original_rows, cleaned: item.pipelineData.stats.clean_rows };
     }
 
     async function produceCombinedOutput() {
       setPipelineStage('Creating output...');
       setPipelineStatus('Building combined Google Sheet...');
+      setPipelineStep(4, 50, 'var(--accent)');
 
       const results = document.getElementById('results');
-      const headers = allHeaders || [];
+      const headers = allHeaders ? [...allHeaders, 'email_verified_by', 'email_verified_date'] : [];
+      const headersNoVerify = allHeaders || [];
 
-      // Build output tabs
+      // Combine all verified and catchall rows
+      const allVerified = [];
+      const allCatchall = [];
+      for (const item of queue) {
+        if (item.verifiedRows) allVerified.push(...item.verifiedRows);
+        if (item.catchallRows) allCatchall.push(...item.catchallRows);
+      }
+
+      // Build output tabs — no Bad tab
       const tabs = [
-        { title: 'All Verified (' + allVerifiedRows.length + ')', headers, rows: allVerifiedRows },
+        { title: 'Verified for Roy (' + allVerified.length + ')', headers, rows: allVerified },
       ];
 
-      // Add per-list verified tabs if multiple lists
-      if (queue.filter(q => q.status === 'done').length > 1) {
-        // Already combined above, individual breakdowns shown in summary
-      }
-
-      if (allCatchallRows.length > 0) {
-        tabs.push({ title: 'Catch-all (' + allCatchallRows.length + ')', headers, rows: allCatchallRows });
-      }
-      if (allBadRows.length > 0) {
-        tabs.push({ title: 'Bad (' + allBadRows.length + ')', headers, rows: allBadRows });
+      if (allCatchall.length > 0) {
+        tabs.push({ title: 'Catch-all (' + allCatchall.length + ')', headers: headersNoVerify, rows: allCatchall });
       }
 
       let outputUrl = null;
@@ -1676,22 +1620,23 @@
 
       setPipelineStep(4, 100, 'var(--green)');
       setPipelineStage('Complete');
-      setPipelineStatus('All lists processed!');
+      updateProgressUI();
 
       // Summary
       const totalInput = queue.reduce((s, q) => s + (q.result?.input || 0), 0);
       const totalCleaned = queue.reduce((s, q) => s + (q.result?.cleaned || 0), 0);
+      const totalVerified = allVerified.length;
+      const totalBad = queue.reduce((s, q) => s + (q.result?.bad || 0), 0);
 
       let h = '<div class="stats-row">';
-      h += '<div class="result-card"><h3>Verified (for Roy)</h3><div class="count green">' + allVerifiedRows.length + '</div></div>';
-      h += '<div class="result-card"><h3>Catch-all</h3><div class="count yellow">' + allCatchallRows.length + '</div></div>';
-      h += '<div class="result-card"><h3>Bad (removed)</h3><div class="count red">' + allBadRows.length + '</div></div>';
+      h += '<div class="result-card"><h3>Verified (for Roy)</h3><div class="count green">' + totalVerified + '</div></div>';
+      h += '<div class="result-card"><h3>Catch-all</h3><div class="count yellow">' + allCatchall.length + '</div></div>';
+      h += '<div class="result-card"><h3>Bad (removed)</h3><div class="count red">' + totalBad + '</div></div>';
       h += '</div>';
 
       h += '<div class="result-card"><h3>Combined Summary</h3>';
-      h += '<p style="margin-top:8px;color:var(--text-muted);">' + queue.length + ' list' + (queue.length > 1 ? 's' : '') + ' processed: ' + totalInput + ' raw rows &rarr; ' + totalCleaned + ' cleaned &rarr; ' + allVerifiedRows.length + ' verified for Roy</p>';
+      h += '<p style="margin-top:8px;color:var(--text-muted);">' + queue.length + ' list' + (queue.length > 1 ? 's' : '') + ' processed in parallel: ' + totalInput + ' raw rows &rarr; ' + totalCleaned + ' cleaned &rarr; ' + totalVerified + ' verified for Roy</p>';
 
-      // Per-list breakdown
       if (queue.length > 1) {
         h += '<div style="margin-top:12px;">';
         for (const item of queue) {
@@ -1716,9 +1661,9 @@
       logActivity('clean_verify_apollo', null, {
         lists: queue.length,
         total_input: totalInput,
-        verified: allVerifiedRows.length,
-        catchall: allCatchallRows.length,
-        bad: allBadRows.length,
+        verified: totalVerified,
+        catchall: allCatchall.length,
+        bad: totalBad,
       });
       loadStats();
       document.getElementById('cleanBtn').disabled = false;
