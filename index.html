@@ -2241,11 +2241,18 @@
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
 
-        results.innerHTML = '<div class="result-card">' +
+        let dncHtml = '<div class="result-card">' +
           '<h3 style="color:var(--red);">Added to DNC</h3>' +
           '<p style="margin-top:8px;color:var(--text);">' + data.added + ' domains added to ' + clientSlug + '\'s DNC list</p>' +
-          (data.already_existed > 0 ? '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + data.already_existed + ' were already in the DNC</p>' : '') +
-          '</div>';
+          (data.already_existed > 0 ? '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + data.already_existed + ' were already in the DNC</p>' : '');
+        if (data.emailbison_blocked > 0) {
+          dncHtml += '<p style="color:var(--green);font-size:13px;margin-top:4px;">' + data.emailbison_blocked + ' also blocked in EmailBison</p>';
+        }
+        if (data.emailbison_failed > 0) {
+          dncHtml += '<p style="color:var(--yellow);font-size:13px;margin-top:4px;">' + data.emailbison_failed + ' failed to sync to EmailBison</p>';
+        }
+        dncHtml += '</div>';
+        results.innerHTML = dncHtml;
 
         logActivity('add_dnc', clientSlug, { count: data.added, domains: domains.slice(0, 5) });
         loadStats(); // refresh dashboard
