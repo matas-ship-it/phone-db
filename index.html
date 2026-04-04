@@ -574,6 +574,7 @@
       loadClients();
       loadStats();
       loadVerificationHistory();
+      checkForRunningJobs();
     }
 
     async function loadStats() {
@@ -1293,10 +1294,96 @@
     }
 
     // ── Queue state ──
-    // Each item: { name, type, sheetId, sheetTab, csvText, status, stage, pipelineData, mvFileId, bbTaskId, mvResults, bbResults, result }
     let queue = [];
     let allHeaders = null;
     let pollTimer = null;
+    let currentJobId = null; // verification_jobs.id for persistence
+
+    // Save current queue state to server
+    async function saveJobState(extras) {
+      if (!currentJobId) return;
+      // Strip non-serializable data (csvText, pipelineData rows) to keep payload small
+      const serializable = queue.map(item => ({
+        name: item.name,
+        type: item.type,
+        sheetId: item.sheetId,
+        sheetTab: item.sheetTab,
+        stage: item.stage,
+        mvFileId: item.mvFileId,
+        bbTaskId: item.bbTaskId,
+        result: item.result,
+      }));
+      const body = { id: currentJobId, queue_items: serializable, ...extras };
+      try {
+        await fetch(API_BASE + '/verification-jobs', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify(body),
+        });
+      } catch (e) { console.error('Failed to save job state:', e); }
+    }
+
+    // Check for and resume running jobs on app load
+    async function checkForRunningJobs() {
+      try {
+        const resp = await fetch(API_BASE + '/verification-jobs', {
+          headers: { 'x-app-password': APP_PASSWORD },
+        });
+        const data = await resp.json();
+        if (!data.job) return;
+
+        const job = data.job;
+        currentJobId = job.id;
+        const items = job.queue_items || [];
+
+        // Check if any items are still in MV or BB stage
+        const active = items.filter(q => q.stage === 'mv' || q.stage === 'bb');
+        if (active.length === 0) {
+          // Job was saved but everything already finished — mark done
+          await fetch(API_BASE + '/verification-jobs', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+            body: JSON.stringify({ id: currentJobId, status: 'done' }),
+          });
+          currentJobId = null;
+          return;
+        }
+
+        // Resume: rebuild queue from saved state
+        queue = items.map(item => ({
+          name: item.name,
+          type: item.type || 'sheet',
+          sheetId: item.sheetId,
+          sheetTab: item.sheetTab,
+          csvText: null,
+          stage: item.stage,
+          pipelineData: null,
+          mvFileId: item.mvFileId,
+          bbTaskId: item.bbTaskId,
+          mvResults: {},
+          bbResults: {},
+          result: item.result,
+          verifiedRows: [],
+          catchallRows: [],
+        }));
+
+        // Switch to Clean Apollo tab and show progress
+        switchTab('clean');
+        renderQueue();
+        document.getElementById('pipelineProgress').classList.remove('hidden');
+        document.getElementById('pipelineCounts').classList.remove('hidden');
+        document.getElementById('cleanBtn').disabled = true;
+        setPipelineStage('Resuming...');
+        setPipelineStep(1, 100, 'var(--green)');
+        setPipelineStep(2, 50, 'var(--accent)');
+        setPipelineStatus(`Resumed! Polling ${active.length} active job(s)...`);
+
+        // Start polling
+        pollAllJobs();
+      } catch (e) {
+        console.error('Failed to check running jobs:', e);
+      }
+    }
 
     function renderQueue() {
       const section = document.getElementById('queueSection');
@@ -1415,6 +1502,17 @@
       progress.classList.remove('hidden');
       document.getElementById('pipelineCounts').classList.remove('hidden');
 
+      // Create persistent job
+      try {
+        const jobResp = await fetch(API_BASE + '/verification-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify({ created_by: userProfile?.email, queue_items: queue.map(q => ({ name: q.name, type: q.type, sheetId: q.sheetId, sheetTab: q.sheetTab, stage: 'waiting' })) }),
+        });
+        const jobData = await jobResp.json();
+        currentJobId = jobData.job?.id || null;
+      } catch (e) { console.error('Failed to create job:', e); }
+
       // Step 1: Clean ALL lists first (fast, synchronous)
       setPipelineStage('Cleaning all lists...');
       setPipelineStep(1, 10, 'var(--accent)');
@@ -1479,6 +1577,7 @@
       renderQueue();
       setPipelineStep(2, 15, 'var(--accent)');
       setPipelineStatus(`${toProcess.filter(q => q.stage === 'mv').length} lists uploaded to MV. Polling...`);
+      saveJobState();
 
       // Start unified poll loop
       pollAllJobs();
@@ -1557,11 +1656,11 @@
                 item.stage = 'bb';
               } catch (err) {
                 // BB failed, finalize with MV only
-                classifyItem(item);
+                await classifyItem(item);
               }
             } else {
               // No catch-alls, finalize
-              classifyItem(item);
+              await classifyItem(item);
             }
           }
         } catch (err) {
@@ -1583,7 +1682,7 @@
             });
             const dlData = await dlResp.json();
             item.bbResults = dlData.results || {};
-            classifyItem(item);
+            await classifyItem(item);
           }
         } catch (err) {
           console.error('BB poll error for ' + item.name, err);
@@ -1592,6 +1691,7 @@
 
       renderQueue();
       updateProgressUI();
+      saveJobState();
 
       // Check if all done
       if (getActiveCount() === 0) {
@@ -1601,7 +1701,31 @@
       }
     }
 
-    function classifyItem(item) {
+    async function ensurePipelineData(item) {
+      // If we resumed from persistence, pipelineData is null — re-read and clean
+      if (item.pipelineData) return true;
+      if (item.type === 'sheet' && item.sheetId && item.sheetTab) {
+        try {
+          const csvText = await readSheetAsCSV(item.sheetId, item.sheetTab);
+          const result = cleanApolloData(csvText);
+          item.pipelineData = result;
+          if (!allHeaders) allHeaders = result.headers;
+          return true;
+        } catch (e) {
+          console.error('Failed to re-read sheet for ' + item.name, e);
+          item.stage = 'error';
+          item.result = { error: 'Failed to re-read sheet: ' + e.message, verified: 0, catchall: 0, bad: 0, input: 0, cleaned: 0 };
+          return false;
+        }
+      }
+      // CSV items can't be resumed (data was in browser memory)
+      item.stage = 'error';
+      item.result = { error: 'CSV data lost — please re-add this list', verified: 0, catchall: 0, bad: 0, input: 0, cleaned: 0 };
+      return false;
+    }
+
+    async function classifyItem(item) {
+      if (!await ensurePipelineData(item)) return;
       const emailIdx = item.pipelineData.headers.indexOf('email');
       const today = new Date().toISOString().split('T')[0];
       let verified = 0, catchall = 0, bad = 0;
@@ -1671,6 +1795,7 @@
       setPipelineStep(4, 100, 'var(--green)');
       setPipelineStage('Complete');
       updateProgressUI();
+      saveJobState({ status: 'done', output_url: outputUrl });
 
       // Summary
       const totalInput = queue.reduce((s, q) => s + (q.result?.input || 0), 0);
