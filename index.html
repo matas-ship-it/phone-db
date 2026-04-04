@@ -2038,6 +2038,7 @@
     // ── AI Search Chat ──
     let searchResultData = null;
     let searchOpen = false;
+    let chatHistory = []; // {role: 'user'|'assistant', content: string}
 
     function toggleSearch() {
       searchOpen = !searchOpen;
@@ -2129,15 +2130,18 @@
 
       // Add user message
       addChatMessage('user', query);
+      chatHistory.push({ role: 'user', content: query });
 
       // Add thinking indicator
       const thinking = addChatMessage('ai', '<span style="color:var(--text-muted);">Searching...</span>');
 
       try {
+        // Send last 10 messages for context
+        const recentHistory = chatHistory.slice(-10);
         const resp = await fetch(API_BASE + '/ai-search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
-          body: JSON.stringify({ query }),
+          body: JSON.stringify({ query, history: recentHistory }),
         });
         const data = await resp.json();
 
@@ -2152,17 +2156,21 @@
         // Handle response types
         if (data.type === 'chat') {
           addChatMessage('ai', data.message);
+          chatHistory.push({ role: 'assistant', content: data.message });
           return;
         }
 
         if (data.type === 'count') {
           const count = (data.count || 0).toLocaleString();
           const desc = data.description || 'matching contacts';
-          addChatMessage('ai', `We've got <strong style="color:var(--green);font-size:16px;">${count}</strong> ${desc} with phone numbers in the database. Want me to pull the full list?`);
+          const msg = `We've got <strong style="color:var(--green);font-size:16px;">${count}</strong> ${desc} with phone numbers in the database. Want me to pull the full list?`;
+          addChatMessage('ai', msg);
+          chatHistory.push({ role: 'assistant', content: `Found ${data.count} ${desc}. SQL used: ${data.sql}` });
           return;
         }
 
         addResultsMessage(data);
+        chatHistory.push({ role: 'assistant', content: `Returned ${data.count} results. SQL: ${data.sql}` });
 
       } catch (err) {
         thinking.remove();
