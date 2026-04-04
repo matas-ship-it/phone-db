@@ -326,8 +326,8 @@
       <!-- CLEAN APOLLO MODE -->
       <div id="cleanMode" class="hidden">
         <div class="result-card" style="margin-bottom:20px;">
-          <h3 style="margin-bottom:4px;">Clean an ExportApollo list</h3>
-          <p style="color:var(--text-muted);font-size:13px;">Paste a raw Apollo export. This strips unnecessary columns, renames to our standard format, cleans domains and LinkedIn URLs, removes duplicates, and adds an empty Phone column for Roy.</p>
+          <h3 style="margin-bottom:4px;">Clean + Verify Apollo List</h3>
+          <p style="color:var(--text-muted);font-size:13px;">Full pipeline: clean columns, verify emails (MillionVerifier + BounceBan), output a verified list ready for Roy. Keep this tab open during verification.</p>
         </div>
 
         <div class="form-group">
@@ -351,7 +351,34 @@
           <input type="file" id="cleanFile" accept=".csv" onchange="handleFile(this,'clean')">
         </div>
 
-        <button class="btn" id="cleanBtn" disabled onclick="runClean()" style="background:#8b5cf6;">Clean Apollo List</button>
+        <button class="btn" id="cleanBtn" disabled onclick="runClean()" style="background:#8b5cf6;">Clean + Verify Apollo List</button>
+
+        <!-- Pipeline Progress -->
+        <div id="pipelineProgress" class="hidden" style="margin-top:20px;">
+          <div class="result-card" style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0;">Pipeline Progress</h3>
+              <span id="pipelineStage" style="font-size:12px;color:var(--accent);font-weight:500;"></span>
+            </div>
+            <div style="display:flex;gap:4px;margin-bottom:16px;">
+              <div class="pipeline-step" id="step1" style="flex:1;height:6px;border-radius:3px;background:var(--border);"><div style="height:100%;border-radius:3px;transition:width 0.5s;" id="step1Fill"></div></div>
+              <div class="pipeline-step" id="step2" style="flex:2;height:6px;border-radius:3px;background:var(--border);"><div style="height:100%;border-radius:3px;transition:width 0.5s;" id="step2Fill"></div></div>
+              <div class="pipeline-step" id="step3" style="flex:2;height:6px;border-radius:3px;background:var(--border);"><div style="height:100%;border-radius:3px;transition:width 0.5s;" id="step3Fill"></div></div>
+              <div class="pipeline-step" id="step4" style="flex:1;height:6px;border-radius:3px;background:var(--border);"><div style="height:100%;border-radius:3px;transition:width 0.5s;" id="step4Fill"></div></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:12px;">
+              <span>Clean</span><span>MillionVerifier</span><span>BounceBan</span><span>Output</span>
+            </div>
+            <p id="pipelineStatus" style="color:var(--text-muted);font-size:13px;"></p>
+            <div id="pipelineCounts" class="hidden" style="margin-top:12px;">
+              <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                <span style="font-size:13px;"><span style="color:var(--green);font-weight:600;" id="mvGoodCount">0</span> good</span>
+                <span style="font-size:13px;"><span style="color:var(--yellow);font-weight:600;" id="mvCatchallCount">0</span> catch-all</span>
+                <span style="font-size:13px;"><span style="color:var(--red);font-weight:600;" id="mvBadCount">0</span> bad</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- DNC MODE -->
@@ -1209,80 +1236,306 @@
       };
     }
 
-    // ── Run Clean ──
+    // ── Pipeline state ──
+    let pipelineData = null; // { headers, rows, emailIdx }
+    let mvFileId = null;
+    let bbTaskId = null;
+    let mvResults = {};  // email -> quality
+    let bbResults = {};  // email -> result
+    let pollTimer = null;
+
+    function setPipelineStep(step, pct, color) {
+      const fill = document.getElementById(`step${step}Fill`);
+      fill.style.width = pct + '%';
+      fill.style.background = color || 'var(--accent)';
+    }
+
+    function setPipelineStatus(text) {
+      document.getElementById('pipelineStatus').textContent = text;
+    }
+
+    function setPipelineStage(text) {
+      document.getElementById('pipelineStage').textContent = text;
+    }
+
+    // ── Run Clean + Verify Pipeline ──
     async function runClean() {
-      const loading = document.getElementById('loading');
       const errorBox = document.getElementById('errorBox');
       const results = document.getElementById('results');
-      loading.classList.add('show');
-      document.getElementById('loadingText').textContent = 'Processing...';
+      const progress = document.getElementById('pipelineProgress');
       errorBox.classList.add('hidden');
       results.innerHTML = '';
       document.getElementById('cleanBtn').disabled = true;
 
       try {
-        let csvText = cleanCSV;
+        // === STEP 1: Clean columns ===
+        progress.classList.remove('hidden');
+        setPipelineStage('Step 1 of 4');
+        setPipelineStatus('Cleaning Apollo columns...');
+        setPipelineStep(1, 50, 'var(--accent)');
 
+        let csvText = cleanCSV;
         if (cleanSheetMeta && !csvText) {
-          document.getElementById('loadingText').textContent = 'Reading Google Sheet...';
+          setPipelineStatus('Reading Google Sheet...');
           const tabTitle = cleanSheetMeta.sheets[selectedCleanTab].title;
           csvText = await readSheetAsCSV(cleanSheetMeta.id, tabTitle);
         }
-
         if (!csvText) throw new Error('No data to clean. Paste a Sheet URL or upload a CSV.');
 
-        document.getElementById('loadingText').textContent = 'Cleaning Apollo data...';
         const result = cleanApolloData(csvText);
-        const s = result.stats;
+        pipelineData = result;
+        const emailIdx = result.headers.indexOf('email');
 
-        // Create output Google Sheet if we have access token
-        let outputUrl = null;
-        if (accessToken) {
-          document.getElementById('loadingText').textContent = 'Creating clean output sheet...';
-          const sourceTitle = cleanSheetMeta ? cleanSheetMeta.title : 'Apollo Import';
-          outputUrl = await createOutputSheet(
-            sourceTitle + ' - Cleaned',
-            [{ title: 'Clean List', headers: result.headers, rows: result.rows }]
-          );
+        setPipelineStep(1, 100, 'var(--green)');
+        setPipelineStatus(`Cleaned: ${result.stats.clean_rows} leads, ${result.stats.cols_dropped} columns dropped, ${result.stats.dupes_removed} dupes removed.`);
+
+        // === STEP 2: Check credits and upload to MV ===
+        setPipelineStage('Step 2 of 4');
+        setPipelineStatus('Checking MillionVerifier credits...');
+        setPipelineStep(2, 5, 'var(--accent)');
+
+        const creditsResp = await fetch(API_BASE + '/verify-emails?action=credits', {
+          headers: { 'x-app-password': APP_PASSWORD },
+        });
+        const credits = await creditsResp.json();
+
+        const emails = result.rows.map(r => r[emailIdx]).filter(e => e);
+        const mvCreditsNeeded = emails.length;
+
+        if (credits.mv_credits < mvCreditsNeeded) {
+          setPipelineStatus(`Warning: ${credits.mv_credits.toLocaleString()} MV credits available, ${mvCreditsNeeded.toLocaleString()} needed. Proceeding anyway (catch-all/unknown are free).`);
         }
 
-        // Render results
-        let h = '<div class="stats-row">';
-        h += '<div class="result-card"><h3>Clean Leads</h3><div class="count green">' + s.clean_rows + '</div></div>';
-        h += '<div class="result-card"><h3>Dupes Removed</h3><div class="count yellow">' + s.dupes_removed + '</div></div>';
-        h += '<div class="result-card"><h3>Cols Dropped</h3><div class="count red">' + s.cols_dropped + '</div></div>';
-        h += '</div>';
+        setPipelineStatus(`Uploading ${emails.length.toLocaleString()} emails to MillionVerifier... (${credits.mv_credits.toLocaleString()} credits available)`);
+        setPipelineStep(2, 10, 'var(--accent)');
 
-        h += '<div class="result-card"><h3>Summary</h3>';
-        h += '<p style="margin-top:8px;color:var(--text-muted);">' + s.original_rows + ' input rows &rarr; ' + s.clean_rows + ' clean leads</p>';
-        h += '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + s.cols_kept + ' columns kept, ' + s.cols_dropped + ' dropped. Empty Phone column added for Roy.</p>';
-        if (s.no_email > 0) h += '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + s.no_email + ' rows without email skipped.</p>';
+        const sourceTitle = cleanSheetMeta ? cleanSheetMeta.title : 'Apollo Import';
+        const mvUploadResp = await fetch(API_BASE + '/verify-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify({ stage: 'mv', emails, name: sourceTitle + ' - ' + new Date().toLocaleDateString() }),
+        });
+        const mvUpload = await mvUploadResp.json();
+        if (mvUpload.error) throw new Error('MV upload failed: ' + mvUpload.error);
+        mvFileId = mvUpload.file_id;
 
-        h += '<p style="color:var(--text-muted);font-size:13px;margin-top:10px;"><strong style="color:var(--text);">Columns:</strong> ' + result.headers.join(', ') + '</p>';
-        h += '</div>';
+        setPipelineStatus(`Uploaded! MillionVerifier is processing ${emails.length.toLocaleString()} emails...`);
+        setPipelineStep(2, 15, 'var(--accent)');
+        document.getElementById('pipelineCounts').classList.remove('hidden');
 
-        if (outputUrl) {
-          h += '<a href="' + outputUrl + '" target="_blank" class="output-link">&#128203; Open clean list in Google Sheets</a>';
-        } else {
-          // CSV fallback
-          const csvContent = [result.headers.join(','), ...result.rows.map(r => r.map(c => {
-            const s = String(c);
-            return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s;
-          }).join(','))].join('\n');
-          h += '<div style="margin-top:12px;"><div class="download-btn" onclick="downloadCSV(window._cleanCSV,\'apollo_cleaned.csv\')" style="display:inline-block;padding:8px 16px;background:#2a2a2a;color:#8b5cf6;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:13px">Download Clean CSV</div></div>';
-          window._cleanCSV = csvContent;
-        }
+        // Start polling MV
+        pollMvStatus();
 
-        results.innerHTML = h;
-        logActivity('clean_apollo', null, { input_rows: s.original_rows, clean_rows: s.clean_rows, dupes: s.dupes_removed });
-        loadStats();
       } catch (err) {
         errorBox.textContent = err.message;
         errorBox.classList.remove('hidden');
-      } finally {
-        loading.classList.remove('show');
         document.getElementById('cleanBtn').disabled = false;
       }
+    }
+
+    async function pollMvStatus() {
+      try {
+        const resp = await fetch(API_BASE + '/verify-emails?action=mv_status&file_id=' + mvFileId, {
+          headers: { 'x-app-password': APP_PASSWORD },
+        });
+        const data = await resp.json();
+
+        const total = data.quantity || 0;
+        const done = (data.ok || 0) + (data.catch_all || 0) + (data.bad || 0);
+        const pct = total > 0 ? Math.min(95, 15 + Math.round((done / total) * 80)) : 15;
+
+        document.getElementById('mvGoodCount').textContent = (data.ok || 0).toLocaleString();
+        document.getElementById('mvCatchallCount').textContent = (data.catch_all || 0).toLocaleString();
+        document.getElementById('mvBadCount').textContent = (data.bad || 0).toLocaleString();
+        setPipelineStep(2, pct, 'var(--accent)');
+        setPipelineStatus(`MillionVerifier: ${data.status} — ${(data.ok||0).toLocaleString()} good, ${(data.catch_all||0).toLocaleString()} catch-all, ${(data.bad||0).toLocaleString()} bad`);
+        setPipelineStage('Step 2 of 4');
+
+        if (data.status === 'finished') {
+          // Download MV results
+          setPipelineStatus('Downloading MillionVerifier results...');
+          const dlResp = await fetch(API_BASE + '/verify-emails?action=mv_download&file_id=' + mvFileId, {
+            headers: { 'x-app-password': APP_PASSWORD },
+          });
+          const dlData = await dlResp.json();
+          mvResults = dlData.results || {};
+          setPipelineStep(2, 100, 'var(--green)');
+
+          // Classify
+          const good = [], catchall = [], bad = [];
+          for (const [email, quality] of Object.entries(mvResults)) {
+            if (quality === 'good' || quality === 'quality') good.push(email);
+            else if (quality === 'risky') catchall.push(email);
+            else bad.push(email);
+          }
+
+          setPipelineStatus(`MV done: ${good.length.toLocaleString()} good, ${catchall.length.toLocaleString()} catch-all, ${bad.length.toLocaleString()} bad.`);
+          document.getElementById('mvGoodCount').textContent = good.length.toLocaleString();
+          document.getElementById('mvCatchallCount').textContent = catchall.length.toLocaleString();
+          document.getElementById('mvBadCount').textContent = bad.length.toLocaleString();
+
+          if (catchall.length > 0) {
+            // === STEP 3: Upload catch-alls to BounceBan ===
+            await startBounceBan(catchall);
+          } else {
+            // No catch-alls, skip BB and go straight to output
+            setPipelineStep(3, 100, 'var(--green)');
+            await finalizePipeline();
+          }
+        } else {
+          // Keep polling every 30s
+          pollTimer = setTimeout(pollMvStatus, 30000);
+        }
+      } catch (err) {
+        setPipelineStatus('Error polling MV: ' + err.message + '. Retrying in 30s...');
+        pollTimer = setTimeout(pollMvStatus, 30000);
+      }
+    }
+
+    async function startBounceBan(catchallEmails) {
+      try {
+        setPipelineStage('Step 3 of 4');
+        setPipelineStatus(`Uploading ${catchallEmails.length.toLocaleString()} catch-all emails to BounceBan...`);
+        setPipelineStep(3, 10, 'var(--accent)');
+
+        const sourceTitle = cleanSheetMeta ? cleanSheetMeta.title : 'Apollo Import';
+        const bbResp = await fetch(API_BASE + '/verify-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
+          body: JSON.stringify({ stage: 'bb', emails: catchallEmails, name: sourceTitle + ' - catchall' }),
+        });
+        const bbData = await bbResp.json();
+        if (bbData.error) throw new Error('BB upload failed: ' + bbData.error);
+        bbTaskId = bbData.task_id;
+
+        setPipelineStatus(`BounceBan is deep-verifying ${catchallEmails.length.toLocaleString()} catch-all emails...`);
+        setPipelineStep(3, 15, 'var(--accent)');
+
+        pollBbStatus();
+      } catch (err) {
+        setPipelineStatus('BounceBan error: ' + err.message + '. Generating output with MV results only...');
+        setPipelineStep(3, 100, 'var(--yellow)');
+        await finalizePipeline();
+      }
+    }
+
+    async function pollBbStatus() {
+      try {
+        const resp = await fetch(API_BASE + '/verify-emails?action=bb_status&task_id=' + bbTaskId, {
+          headers: { 'x-app-password': APP_PASSWORD },
+        });
+        const data = await resp.json();
+
+        const pct = data.total > 0 ? Math.min(95, 15 + Math.round(((data.verified || 0) / data.total) * 80)) : 15;
+        setPipelineStep(3, pct, 'var(--accent)');
+        setPipelineStatus(`BounceBan: ${data.status} — ${(data.verified||0).toLocaleString()} / ${(data.total||0).toLocaleString()} verified`);
+        setPipelineStage('Step 3 of 4');
+
+        if (data.status === 'finished') {
+          // Download BB results
+          setPipelineStatus('Downloading BounceBan results...');
+          const dlResp = await fetch(API_BASE + '/verify-emails?action=bb_download&task_id=' + bbTaskId, {
+            headers: { 'x-app-password': APP_PASSWORD },
+          });
+          const dlData = await dlResp.json();
+          bbResults = dlData.results || {};
+          setPipelineStep(3, 100, 'var(--green)');
+
+          const bbGood = Object.values(bbResults).filter(r => r === 'deliverable').length;
+          const bbBad = Object.keys(bbResults).length - bbGood;
+          setPipelineStatus(`BB done: ${bbGood} deliverable, ${bbBad} rejected from catch-alls.`);
+
+          await finalizePipeline();
+        } else {
+          pollTimer = setTimeout(pollBbStatus, 30000);
+        }
+      } catch (err) {
+        setPipelineStatus('Error polling BB: ' + err.message + '. Retrying in 30s...');
+        pollTimer = setTimeout(pollBbStatus, 30000);
+      }
+    }
+
+    async function finalizePipeline() {
+      setPipelineStage('Step 4 of 4');
+      setPipelineStatus('Building output...');
+      setPipelineStep(4, 50, 'var(--accent)');
+
+      const emailIdx = pipelineData.headers.indexOf('email');
+      const results = document.getElementById('results');
+
+      // Classify all rows
+      const verifiedRows = [];
+      const catchallRows = [];
+      const badRows = [];
+
+      for (const row of pipelineData.rows) {
+        const email = (row[emailIdx] || '').toLowerCase();
+        const mvQ = mvResults[email] || 'unknown';
+
+        if (mvQ === 'good' || mvQ === 'quality') {
+          verifiedRows.push(row);
+        } else if (mvQ === 'risky') {
+          // Check BB result
+          const bbQ = bbResults[email];
+          if (bbQ === 'deliverable') {
+            verifiedRows.push(row);
+          } else if (bbQ) {
+            badRows.push(row);
+          } else {
+            // BB didn't run or no result — keep as catch-all
+            catchallRows.push(row);
+          }
+        } else {
+          badRows.push(row);
+        }
+      }
+
+      // Create output Google Sheet
+      let outputUrl = null;
+      if (accessToken) {
+        setPipelineStatus('Creating output Google Sheet...');
+        const sourceTitle = cleanSheetMeta ? cleanSheetMeta.title : 'Apollo Import';
+        outputUrl = await createOutputSheet(
+          sourceTitle + ' - Verified',
+          [
+            { title: 'Verified (' + verifiedRows.length + ')', headers: pipelineData.headers, rows: verifiedRows },
+            { title: 'Catch-all (' + catchallRows.length + ')', headers: pipelineData.headers, rows: catchallRows },
+            { title: 'Bad (' + badRows.length + ')', headers: pipelineData.headers, rows: badRows },
+          ]
+        );
+      }
+
+      setPipelineStep(4, 100, 'var(--green)');
+      setPipelineStage('Complete');
+      setPipelineStatus('Pipeline complete!');
+
+      // Render final results
+      let h = '<div class="stats-row">';
+      h += '<div class="result-card"><h3>Verified (for Roy)</h3><div class="count green">' + verifiedRows.length + '</div></div>';
+      h += '<div class="result-card"><h3>Catch-all</h3><div class="count yellow">' + catchallRows.length + '</div></div>';
+      h += '<div class="result-card"><h3>Bad (removed)</h3><div class="count red">' + badRows.length + '</div></div>';
+      h += '</div>';
+
+      h += '<div class="result-card"><h3>Pipeline Summary</h3>';
+      h += '<p style="margin-top:8px;color:var(--text-muted);">' + pipelineData.stats.original_rows + ' raw Apollo rows &rarr; ' + pipelineData.stats.clean_rows + ' cleaned &rarr; ' + verifiedRows.length + ' verified leads ready for Roy</p>';
+      h += '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + pipelineData.stats.cols_dropped + ' columns dropped, ' + pipelineData.stats.dupes_removed + ' dupes removed.</p>';
+      h += '<p style="color:var(--text-muted);font-size:13px;margin-top:10px;"><strong style="color:var(--text);">Columns:</strong> ' + pipelineData.headers.join(', ') + '</p>';
+      h += '</div>';
+
+      if (outputUrl) {
+        h += '<a href="' + outputUrl + '" target="_blank" class="output-link">&#128203; Open verified list in Google Sheets</a>';
+      }
+
+      results.innerHTML = h;
+      logActivity('clean_verify_apollo', null, {
+        input_rows: pipelineData.stats.original_rows,
+        clean_rows: pipelineData.stats.clean_rows,
+        verified: verifiedRows.length,
+        catchall: catchallRows.length,
+        bad: badRows.length,
+      });
+      loadStats();
+      document.getElementById('cleanBtn').disabled = false;
     }
 
     // ── DNC ──
