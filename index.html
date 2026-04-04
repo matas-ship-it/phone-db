@@ -2011,6 +2011,12 @@
           return;
         }
 
+        // Handle chat vs SQL response
+        if (data.type === 'chat') {
+          addChatMessage('ai', data.message);
+          return;
+        }
+
         addResultsMessage(data);
 
       } catch (err) {
