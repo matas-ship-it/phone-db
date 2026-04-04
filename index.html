@@ -243,12 +243,42 @@
         </div>
       </div>
 
+      <!-- AI SEARCH CHATBOT -->
+      <div id="searchSection" style="margin-bottom:24px;display:none;">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="toggleSearch()">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:18px;">&#128270;</span>
+              <h3 style="font-size:15px;font-weight:600;color:var(--text-heading);margin:0;">AI Lead Search</h3>
+              <span style="font-size:11px;color:var(--text-faint);background:var(--pill-bg);border:1px solid var(--pill-border);padding:2px 8px;border-radius:10px;">500K contacts + 78K companies</span>
+            </div>
+            <span id="searchToggle" style="font-size:12px;color:var(--text-faint);transition:transform 0.2s;">&#9660;</span>
+          </div>
+          <div id="searchBody" style="display:none;">
+            <div id="chatMessages" style="max-height:500px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;">
+              <div style="display:flex;gap:10px;align-items:flex-start;">
+                <span style="font-size:16px;margin-top:2px;">&#129302;</span>
+                <div style="background:var(--pill-bg);border:1px solid var(--pill-border);border-radius:12px;padding:10px 14px;max-width:90%;font-size:13px;color:var(--text);line-height:1.5;">
+                  Hey! I can search across the entire LLG database. Try things like:<br>
+                  <span style="color:var(--text-muted);">"Procurement managers in the UK at construction companies"</span><br>
+                  <span style="color:var(--text-muted);">"Founders at SaaS companies in Germany"</span><br>
+                  <span style="color:var(--text-muted);">"C-level at pharma companies with $100M+ revenue"</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;">
+              <input type="text" id="searchQuery" placeholder="Ask me to find leads..." style="flex:1;padding:10px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:20px;color:var(--input-text);font-size:14px;outline:none;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();runSearch();}">
+              <button onclick="runSearch()" id="searchBtn" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:20px;cursor:pointer;font-size:14px;white-space:nowrap;">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Tabs -->
       <div class="tabs">
         <div class="tab active" onclick="switchTab('check')" id="tabCheck">Check a List</div>
         <div class="tab" onclick="switchTab('save')" id="tabSave">Save Numbers</div>
         <div class="tab" onclick="switchTab('clean')" id="tabClean">Clean Apollo</div>
-        <div class="tab" onclick="switchTab('search')" id="tabSearch">AI Search</div>
         <div class="tab" onclick="switchTab('dnc')" id="tabDnc">DNC</div>
         <div class="tab" onclick="switchTab('newclient')" id="tabNewClient">New Client</div>
       </div>
@@ -401,57 +431,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- AI SEARCH MODE -->
-      <div id="searchMode" class="hidden">
-        <div class="result-card" style="margin-bottom:20px;">
-          <h3 style="margin-bottom:4px;">AI Lead Search</h3>
-          <p style="color:var(--text-muted);font-size:13px;">Search 500K contacts and 78K companies using natural language. The AI converts your query into a database search and returns matching leads.</p>
-        </div>
-
-        <div class="form-group">
-          <div style="display:flex;gap:8px;">
-            <input type="text" id="searchQuery" placeholder="e.g. Procurement managers in the UK at construction companies" style="flex:1;" onkeydown="if(event.key==='Enter')runSearch()">
-            <button onclick="runSearch()" id="searchBtn" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;white-space:nowrap;">Search</button>
-          </div>
-          <div class="hint">Try: "founders in Germany at SaaS companies", "logistics directors with phone numbers at companies using SAP", "C-level at pharma companies with $100M+ revenue"</div>
-        </div>
-
-        <div id="searchLoading" class="hidden" style="text-align:center;padding:24px;">
-          <div class="spinner"></div>
-          <p style="color:var(--text-muted);margin-top:12px;font-size:14px;" id="searchLoadingText">Searching...</p>
-        </div>
-
-        <div id="searchResults" class="hidden">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <div>
-              <span style="font-size:20px;font-weight:600;color:var(--green);" id="searchCount">0</span>
-              <span style="color:var(--text-muted);font-size:14px;"> leads found</span>
-            </div>
-            <div style="display:flex;gap:8px;">
-              <button onclick="exportSearchCSV()" style="padding:6px 14px;background:var(--bg-card);color:var(--accent);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;">Download CSV</button>
-              <button onclick="exportSearchSheet()" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Open in Sheets</button>
-            </div>
-          </div>
-
-          <div id="searchSqlPreview" style="margin-bottom:12px;">
-            <details style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
-              <summary style="font-size:12px;color:var(--text-faint);cursor:pointer;">View generated SQL</summary>
-              <pre id="searchSql" style="margin-top:8px;font-size:11px;color:var(--text-muted);overflow-x:auto;white-space:pre-wrap;word-break:break-all;"></pre>
-            </details>
-          </div>
-
-          <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;">
-            <table id="searchTable" style="width:100%;border-collapse:collapse;font-size:12px;">
-              <thead id="searchTableHead"></thead>
-              <tbody id="searchTableBody"></tbody>
-            </table>
-          </div>
-          <p id="searchTableNote" style="color:var(--text-faint);font-size:11px;margin-top:8px;"></p>
-        </div>
-
-        <div id="searchError" class="error hidden"></div>
       </div>
 
       <!-- DNC MODE -->
@@ -623,6 +602,7 @@
       document.getElementById('userAvatar').src = userProfile.picture;
       document.getElementById('userName').textContent = userProfile.name;
       document.getElementById('userEmail').textContent = userProfile.email;
+      document.getElementById('searchSection').style.display = 'block';
       loadClients();
       loadStats();
       loadVerificationHistory();
@@ -766,13 +746,11 @@
       document.getElementById('checkMode').classList.toggle('hidden', tab !== 'check');
       document.getElementById('saveMode').classList.toggle('hidden', tab !== 'save');
       document.getElementById('cleanMode').classList.toggle('hidden', tab !== 'clean');
-      document.getElementById('searchMode').classList.toggle('hidden', tab !== 'search');
       document.getElementById('dncMode').classList.toggle('hidden', tab !== 'dnc');
       document.getElementById('newClientMode').classList.toggle('hidden', tab !== 'newclient');
       document.getElementById('tabCheck').classList.toggle('active', tab === 'check');
       document.getElementById('tabSave').classList.toggle('active', tab === 'save');
       document.getElementById('tabClean').classList.toggle('active', tab === 'clean');
-      document.getElementById('tabSearch').classList.toggle('active', tab === 'search');
       document.getElementById('tabDnc').classList.toggle('active', tab === 'dnc');
       document.getElementById('tabNewClient').classList.toggle('active', tab === 'newclient');
       document.getElementById('results').innerHTML = '';
@@ -1919,21 +1897,103 @@
       document.getElementById('cleanBtn').disabled = false;
     }
 
-    // ── AI Search ──
-    let searchResultData = null; // { headers, rows }
+    // ── AI Search Chat ──
+    let searchResultData = null;
+    let searchOpen = false;
+
+    function toggleSearch() {
+      searchOpen = !searchOpen;
+      document.getElementById('searchBody').style.display = searchOpen ? 'block' : 'none';
+      document.getElementById('searchToggle').style.transform = searchOpen ? 'rotate(180deg)' : '';
+      if (searchOpen) document.getElementById('searchQuery').focus();
+    }
+
+    function addChatMessage(type, content) {
+      const container = document.getElementById('chatMessages');
+      const msg = document.createElement('div');
+      msg.style.cssText = 'display:flex;gap:10px;align-items:flex-start;' + (type === 'user' ? 'flex-direction:row-reverse;' : '');
+
+      const icon = type === 'user' ? '&#128100;' : '&#129302;';
+      const bgColor = type === 'user' ? 'var(--accent)' : 'var(--pill-bg)';
+      const borderColor = type === 'user' ? 'var(--accent)' : 'var(--pill-border)';
+      const textColor = type === 'user' ? '#fff' : 'var(--text)';
+
+      msg.innerHTML = `<span style="font-size:16px;margin-top:2px;">${icon}</span>
+        <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:12px;padding:10px 14px;max-width:90%;font-size:13px;color:${textColor};line-height:1.5;">${content}</div>`;
+
+      container.appendChild(msg);
+      container.scrollTop = container.scrollHeight;
+      return msg;
+    }
+
+    function addResultsMessage(data) {
+      const container = document.getElementById('chatMessages');
+      const msg = document.createElement('div');
+      msg.style.cssText = 'display:flex;gap:10px;align-items:flex-start;';
+
+      const rows = data.results || [];
+      searchResultData = rows;
+      const searchId = 'search_' + Date.now();
+
+      if (rows.length === 0) {
+        msg.innerHTML = `<span style="font-size:16px;margin-top:2px;">&#129302;</span>
+          <div style="background:var(--pill-bg);border:1px solid var(--pill-border);border-radius:12px;padding:10px 14px;max-width:90%;font-size:13px;color:var(--text);">No results found. Try broadening your search or different keywords.</div>`;
+        container.appendChild(msg);
+        container.scrollTop = container.scrollHeight;
+        return;
+      }
+
+      const headers = Object.keys(rows[0]);
+      const displayRows = rows.slice(0, 25);
+      const displayCols = headers.filter(h => !['keywords'].includes(h)).slice(0, 8);
+
+      let tableHtml = `<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:15px;font-weight:600;color:var(--green);">${rows.length.toLocaleString()}</span>
+        <span style="color:var(--text-muted);font-size:13px;"> leads found</span>
+        <div style="display:flex;gap:6px;margin-left:auto;">
+          <button onclick="exportSearchCSV()" style="padding:4px 10px;background:var(--bg-card);color:var(--accent);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;">CSV</button>
+          <button onclick="exportSearchSheet()" style="padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;">Sheets</button>
+        </div>
+      </div>`;
+
+      tableHtml += `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">`;
+      tableHtml += '<thead><tr>' + displayCols.map(h => `<th style="padding:6px 8px;text-align:left;border-bottom:2px solid var(--border);color:var(--text-muted);font-size:10px;text-transform:uppercase;white-space:nowrap;background:var(--bg-card);">${h.replace(/_/g, ' ')}</th>`).join('') + '</tr></thead><tbody>';
+
+      for (const row of displayRows) {
+        tableHtml += '<tr style="border-bottom:1px solid var(--border);">' + displayCols.map(h => {
+          const val = row[h] ?? '';
+          const display = String(val).length > 30 ? String(val).substring(0, 27) + '...' : String(val);
+          return `<td style="padding:4px 8px;color:var(--text);white-space:nowrap;" title="${String(val).replace(/"/g, '&quot;')}">${display}</td>`;
+        }).join('') + '</tr>';
+      }
+      tableHtml += '</tbody></table></div>';
+
+      if (rows.length > 25) {
+        tableHtml += `<p style="color:var(--text-faint);font-size:11px;margin-top:6px;">Showing 25 of ${rows.length.toLocaleString()}. Export to see all.</p>`;
+      }
+
+      // SQL toggle
+      tableHtml += `<details style="margin-top:8px;"><summary style="font-size:11px;color:var(--text-faint);cursor:pointer;">SQL</summary><pre style="font-size:10px;color:var(--text-muted);margin-top:4px;white-space:pre-wrap;word-break:break-all;">${data.sql}</pre></details>`;
+
+      msg.innerHTML = `<span style="font-size:16px;margin-top:2px;">&#129302;</span>
+        <div style="background:var(--pill-bg);border:1px solid var(--pill-border);border-radius:12px;padding:10px 14px;max-width:95%;width:100%;font-size:13px;color:var(--text);">${tableHtml}</div>`;
+
+      container.appendChild(msg);
+      container.scrollTop = container.scrollHeight;
+    }
 
     async function runSearch() {
       const query = document.getElementById('searchQuery').value.trim();
       if (!query) return;
 
-      const loading = document.getElementById('searchLoading');
-      const results = document.getElementById('searchResults');
-      const errorEl = document.getElementById('searchError');
-      loading.classList.remove('hidden');
-      results.classList.add('hidden');
-      errorEl.classList.add('hidden');
+      document.getElementById('searchQuery').value = '';
       document.getElementById('searchBtn').disabled = true;
-      document.getElementById('searchLoadingText').textContent = 'AI is generating query...';
+
+      // Add user message
+      addChatMessage('user', query);
+
+      // Add thinking indicator
+      const thinking = addChatMessage('ai', '<span style="color:var(--text-muted);">Searching...</span>');
 
       try {
         const resp = await fetch(API_BASE + '/ai-search', {
@@ -1943,59 +2003,20 @@
         });
         const data = await resp.json();
 
+        // Remove thinking indicator
+        thinking.remove();
+
         if (data.error) {
-          errorEl.textContent = data.error + (data.hint ? ' ' + data.hint : '');
-          errorEl.classList.remove('hidden');
-          if (data.sql) {
-            document.getElementById('searchSql').textContent = data.sql;
-          }
+          addChatMessage('ai', `<span style="color:var(--red);">Error: ${data.error}</span>${data.hint ? '<br><span style="color:var(--text-muted);">' + data.hint + '</span>' : ''}`);
           return;
         }
 
-        // Show SQL
-        document.getElementById('searchSql').textContent = data.sql;
-
-        // Build table
-        const rows = data.results || [];
-        searchResultData = rows;
-        document.getElementById('searchCount').textContent = rows.length.toLocaleString();
-
-        if (rows.length === 0) {
-          document.getElementById('searchTableHead').innerHTML = '';
-          document.getElementById('searchTableBody').innerHTML = '<tr><td style="padding:24px;text-align:center;color:var(--text-muted);">No results found. Try broadening your search.</td></tr>';
-          document.getElementById('searchTableNote').textContent = '';
-          results.classList.remove('hidden');
-          return;
-        }
-
-        // Get headers from first row
-        const headers = Object.keys(rows[0]);
-        const displayRows = rows.slice(0, 100); // Show first 100 in preview
-
-        document.getElementById('searchTableHead').innerHTML = '<tr>' +
-          headers.map(h => `<th style="padding:8px 10px;text-align:left;border-bottom:2px solid var(--border);color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;background:var(--bg-card);">${h.replace(/_/g, ' ')}</th>`).join('') +
-          '</tr>';
-
-        document.getElementById('searchTableBody').innerHTML = displayRows.map(row =>
-          '<tr style="border-bottom:1px solid var(--border);">' +
-          headers.map(h => {
-            const val = row[h] ?? '';
-            const display = String(val).length > 40 ? String(val).substring(0, 37) + '...' : String(val);
-            return `<td style="padding:6px 10px;font-size:12px;color:var(--text);white-space:nowrap;" title="${String(val).replace(/"/g, '&quot;')}">${display}</td>`;
-          }).join('') +
-          '</tr>'
-        ).join('');
-
-        document.getElementById('searchTableNote').textContent =
-          rows.length > 100 ? `Showing 100 of ${rows.length.toLocaleString()} results. Download CSV or open in Sheets to see all.` : '';
-
-        results.classList.remove('hidden');
+        addResultsMessage(data);
 
       } catch (err) {
-        errorEl.textContent = 'Search failed: ' + err.message;
-        errorEl.classList.remove('hidden');
+        thinking.remove();
+        addChatMessage('ai', `<span style="color:var(--red);">Search failed: ${err.message}</span>`);
       } finally {
-        loading.classList.add('hidden');
         document.getElementById('searchBtn').disabled = false;
       }
     }
@@ -2018,19 +2039,14 @@
       const headers = Object.keys(searchResultData[0]);
       const rows = searchResultData.map(row => headers.map(h => row[h] ?? ''));
       try {
-        document.getElementById('searchLoadingText').textContent = 'Creating Google Sheet...';
-        document.getElementById('searchLoading').classList.remove('hidden');
-        const query = document.getElementById('searchQuery').value.trim();
-        const title = 'AI Search: ' + (query.length > 40 ? query.substring(0, 37) + '...' : query);
-        const url = await createOutputSheet(title, [
+        const url = await createOutputSheet('AI Search Results', [
           { title: 'Results (' + rows.length + ')', headers, rows }
         ]);
-        if (url) window.open(url, '_blank');
+        if (url) {
+          addChatMessage('ai', `<a href="${url}" target="_blank" style="color:var(--accent);">Google Sheet created - Open</a>`);
+        }
       } catch (err) {
-        document.getElementById('searchError').textContent = 'Failed to create sheet: ' + err.message;
-        document.getElementById('searchError').classList.remove('hidden');
-      } finally {
-        document.getElementById('searchLoading').classList.add('hidden');
+        addChatMessage('ai', `<span style="color:var(--red);">Failed to create sheet: ${err.message}</span>`);
       }
     }
 
