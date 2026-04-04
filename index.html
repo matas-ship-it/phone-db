@@ -511,7 +511,6 @@
     let tokenClient = null;
     let checkCSV = '';
     let saveCSV = '';
-    let cleanCSV = '';
     let sheetMeta = null;       // { id, title, sheets: [{title, rowCount}] }
     let saveSheetMeta = null;
     let cleanSheetMeta = null;
@@ -1474,10 +1473,6 @@
       renderQueue();
     }
 
-    function updateCleanBtn() {
-      document.getElementById('addSheetBtn').disabled = !cleanSheetMeta;
-      document.getElementById('cleanBtn').disabled = queue.length === 0;
-    }
 
     function setPipelineStep(step, pct, color) {
       const fill = document.getElementById(`step${step}Fill`);
