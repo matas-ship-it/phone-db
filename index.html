@@ -1312,6 +1312,7 @@
         mvFileId: item.mvFileId,
         bbTaskId: item.bbTaskId,
         result: item.result,
+        outputUrl: item.outputUrl || null,
       }));
       const body = { id: currentJobId, queue_items: serializable, ...extras };
       try {
@@ -1363,6 +1364,7 @@
           mvResults: {},
           bbResults: {},
           result: item.result,
+          outputUrl: item.outputUrl || null,
           verifiedRows: [],
           catchallRows: [],
         }));
@@ -1408,10 +1410,12 @@
         const icon = statusIcons[item.stage] || '';
         const label = statusLabels[item.stage] || item.stage;
         const resultText = item.result ? ` — ${item.result.verified || 0} verified` : '';
+        const openLink = item.outputUrl ? `<a href="${item.outputUrl}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:12px;white-space:nowrap;">Open</a>` : '';
         return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;">
           <span style="color:${color};font-size:16px;">${icon}</span>
           <span style="flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${item.name}">${item.name}</span>
           <span style="font-size:12px;color:${color};">${label}${resultText}</span>
+          ${openLink}
           ${item.stage === 'waiting' ? `<button onclick="removeFromQueue(${i})" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;">&times;</button>` : ''}
         </div>`;
       }).join('');
@@ -1758,6 +1762,22 @@
 
       item.stage = 'done';
       item.result = { verified, catchall, bad, input: item.pipelineData.stats.original_rows, cleaned: item.pipelineData.stats.clean_rows };
+
+      // Create individual output sheet immediately
+      if (accessToken && item.verifiedRows.length > 0) {
+        try {
+          const headers = [...item.pipelineData.headers, 'email_verified_by', 'email_verified_date'];
+          const tabs = [
+            { title: 'Verified (' + item.verifiedRows.length + ')', headers, rows: item.verifiedRows },
+          ];
+          if (item.catchallRows && item.catchallRows.length > 0) {
+            tabs.push({ title: 'Catch-all (' + item.catchallRows.length + ')', headers: item.pipelineData.headers, rows: item.catchallRows });
+          }
+          item.outputUrl = await createOutputSheet(item.name + ' - Verified', tabs);
+        } catch (e) {
+          console.error('Failed to create output sheet for ' + item.name, e);
+        }
+      }
     }
 
     async function produceCombinedOutput() {
