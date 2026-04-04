@@ -330,6 +330,14 @@
           <p style="color:var(--text-muted);font-size:13px;">Add one or more raw Apollo exports. The pipeline cleans columns, verifies emails (MV + BB), and outputs a combined verified list for Roy. Keep this tab open during verification.</p>
         </div>
 
+        <!-- Verification History -->
+        <div id="verificationHistory" class="hidden" style="margin-bottom:20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <label style="font-size:13px;color:var(--text-muted);">Recent Verifications</label>
+          </div>
+          <div id="verificationList" style="display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+
         <!-- Add to queue inputs -->
         <div class="form-group">
           <label>Google Sheet URL</label>
@@ -565,6 +573,7 @@
       document.getElementById('userEmail').textContent = userProfile.email;
       loadClients();
       loadStats();
+      loadVerificationHistory();
     }
 
     async function loadStats() {
@@ -612,6 +621,47 @@
       if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
       if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
       return date.toLocaleDateString();
+    }
+
+    async function loadVerificationHistory() {
+      try {
+        const resp = await fetch(API_BASE + '/log-activity?type=history', {
+          headers: { 'x-app-password': APP_PASSWORD },
+        });
+        const data = await resp.json();
+        const entries = data.entries || [];
+
+        const container = document.getElementById('verificationHistory');
+        const list = document.getElementById('verificationList');
+
+        if (entries.length === 0) {
+          container.classList.add('hidden');
+          return;
+        }
+
+        container.classList.remove('hidden');
+        list.innerHTML = entries.map(e => {
+          const d = e.details || {};
+          const date = new Date(e.created_at);
+          const dateStr = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          const names = d.list_names ? d.list_names.join(', ') : 'Apollo list';
+          const shortName = names.length > 60 ? names.substring(0, 57) + '...' : names;
+          const verified = d.verified || 0;
+          const user = e.user_email ? e.user_email.split('@')[0] : '';
+          const userCap = user.charAt(0).toUpperCase() + user.slice(1);
+          const url = d.output_url;
+
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;font-size:13px;">
+            <span style="color:var(--text-faint);white-space:nowrap;min-width:50px;">${dateStr}</span>
+            <span style="color:var(--text-muted);min-width:50px;">${userCap}</span>
+            <span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${names}">${shortName}</span>
+            <span style="color:var(--green);font-weight:600;white-space:nowrap;">${verified} verified</span>
+            ${url ? `<a href="${url}" target="_blank" style="color:var(--accent);text-decoration:none;white-space:nowrap;font-size:12px;">Open</a>` : ''}
+          </div>`;
+        }).join('');
+      } catch (err) {
+        console.error('Failed to load verification history:', err);
+      }
     }
 
     async function loadClients() {
@@ -1658,14 +1708,19 @@
       }
 
       results.innerHTML = h;
+      const listNames = queue.filter(q => q.result).map(q => q.name);
       logActivity('clean_verify_apollo', null, {
         lists: queue.length,
+        list_names: listNames,
         total_input: totalInput,
         verified: totalVerified,
         catchall: allCatchall.length,
         bad: totalBad,
+        output_url: outputUrl || null,
       });
       loadStats();
+      // Refresh history after a short delay (let the log write complete)
+      setTimeout(loadVerificationHistory, 2000);
       document.getElementById('cleanBtn').disabled = false;
     }
 
