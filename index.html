@@ -2011,9 +2011,16 @@
           return;
         }
 
-        // Handle chat vs SQL response
+        // Handle response types
         if (data.type === 'chat') {
           addChatMessage('ai', data.message);
+          return;
+        }
+
+        if (data.type === 'count') {
+          const count = (data.count || 0).toLocaleString();
+          const desc = data.description || 'matching contacts';
+          addChatMessage('ai', `We've got <strong style="color:var(--green);font-size:16px;">${count}</strong> ${desc} with phone numbers in the database. Want me to pull the full list?`);
           return;
         }
 
