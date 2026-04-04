@@ -1972,20 +1972,22 @@
 
         let h = '';
 
-        // Stats grid
-        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">';
+        // Database section
+        h += '<h4 style="font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Database</h4>';
+        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">';
         h += `<div class="stat-card"><div class="stat-value accent">${(db.total_leads||0).toLocaleString()}</div><div class="stat-label">Total Leads</div></div>`;
         h += `<div class="stat-card"><div class="stat-value green">${(db.leads_with_phone||0).toLocaleString()}</div><div class="stat-label">With Phone (${phonePct}%)</div></div>`;
-        h += `<div class="stat-card"><div class="stat-value" style="color:var(--accent);">${(s.total_campaigns||0)}</div><div class="stat-label">Campaigns</div></div>`;
         h += `<div class="stat-card"><div class="stat-value green">${(db.booked_calls||0)}</div><div class="stat-label">Booked Calls</div></div>`;
+        h += `<div class="stat-card"><div class="stat-value red">${(db.dnc_total||0).toLocaleString()}</div><div class="stat-label">DNC Entries</div></div>`;
         h += '</div>';
 
-        // Email stats row
+        // EmailBison section
+        h += '<h4 style="font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">EmailBison</h4>';
         h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">';
+        h += `<div class="stat-card"><div class="stat-value" style="color:var(--accent);">${(s.total_campaigns||0)}</div><div class="stat-label">Campaigns</div></div>`;
         h += `<div class="stat-card"><div class="stat-value">${(s.total_sent||0).toLocaleString()}</div><div class="stat-label">Emails Sent</div></div>`;
         h += `<div class="stat-card"><div class="stat-value green">${(s.total_replies||0).toLocaleString()}</div><div class="stat-label">Replies (${s.reply_rate||'0%'})</div></div>`;
         h += `<div class="stat-card"><div class="stat-value red">${(s.total_bounces||0).toLocaleString()}</div><div class="stat-label">Bounces</div></div>`;
-        h += `<div class="stat-card"><div class="stat-value red">${(db.dnc_total||0).toLocaleString()}</div><div class="stat-label">DNC Entries</div></div>`;
         h += '</div>';
 
         // Campaign status breakdown
