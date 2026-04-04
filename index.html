@@ -245,8 +245,9 @@
       <!-- Tabs -->
       <div class="tabs">
         <div class="tab active" onclick="switchTab('check')" id="tabCheck">Check a List</div>
-        <div class="tab" onclick="switchTab('save')" id="tabSave">Save New Numbers</div>
-        <div class="tab" onclick="switchTab('dnc')" id="tabDnc">Add to DNC</div>
+        <div class="tab" onclick="switchTab('save')" id="tabSave">Save Numbers</div>
+        <div class="tab" onclick="switchTab('clean')" id="tabClean">Clean Apollo</div>
+        <div class="tab" onclick="switchTab('dnc')" id="tabDnc">DNC</div>
         <div class="tab" onclick="switchTab('newclient')" id="tabNewClient">New Client</div>
       </div>
 
@@ -320,6 +321,37 @@
         </div>
 
         <button class="btn save-btn" id="saveBtn" disabled onclick="runSave()">Save Numbers to Database</button>
+      </div>
+
+      <!-- CLEAN APOLLO MODE -->
+      <div id="cleanMode" class="hidden">
+        <div class="result-card" style="margin-bottom:20px;">
+          <h3 style="margin-bottom:4px;">Clean an ExportApollo list</h3>
+          <p style="color:var(--text-muted);font-size:13px;">Paste a raw Apollo export. This strips unnecessary columns, renames to our standard format, cleans domains and LinkedIn URLs, removes duplicates, and adds an empty Phone column for Roy.</p>
+        </div>
+
+        <div class="form-group">
+          <label>Google Sheet URL</label>
+          <input type="url" id="cleanSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..." oninput="onCleanSheetUrlChange()">
+          <div class="hint">Paste the Google Sheet URL of the raw Apollo export.</div>
+        </div>
+
+        <div id="cleanSheetPreview" class="sheet-preview hidden">
+          <h3 id="cleanSheetTitle">Loading...</h3>
+          <div class="meta"><span id="cleanSheetRowCount">0</span> rows across <span id="cleanSheetTabCount">0</span> tabs</div>
+          <div class="sheet-tabs" id="cleanSheetTabs"></div>
+        </div>
+
+        <div class="or-divider">or</div>
+
+        <div class="upload-area" id="cleanUpload" onclick="document.getElementById('cleanFile').click()">
+          <div class="icon">&#128295;</div>
+          <p>Drop a raw Apollo CSV here</p>
+          <p class="file-name" id="cleanFileName"></p>
+          <input type="file" id="cleanFile" accept=".csv" onchange="handleFile(this,'clean')">
+        </div>
+
+        <button class="btn" id="cleanBtn" disabled onclick="runClean()" style="background:#8b5cf6;">Clean Apollo List</button>
       </div>
 
       <!-- DNC MODE -->
@@ -432,10 +464,13 @@
     let tokenClient = null;
     let checkCSV = '';
     let saveCSV = '';
+    let cleanCSV = '';
     let sheetMeta = null;       // { id, title, sheets: [{title, rowCount}] }
     let saveSheetMeta = null;
+    let cleanSheetMeta = null;
     let selectedSheetTab = 0;
     let selectedSaveTab = 0;
+    let selectedCleanTab = 0;
 
     // ── Google Identity Services (single OAuth flow) ──
     window.onload = function() {
@@ -588,10 +623,12 @@
     function switchTab(tab) {
       document.getElementById('checkMode').classList.toggle('hidden', tab !== 'check');
       document.getElementById('saveMode').classList.toggle('hidden', tab !== 'save');
+      document.getElementById('cleanMode').classList.toggle('hidden', tab !== 'clean');
       document.getElementById('dncMode').classList.toggle('hidden', tab !== 'dnc');
       document.getElementById('newClientMode').classList.toggle('hidden', tab !== 'newclient');
       document.getElementById('tabCheck').classList.toggle('active', tab === 'check');
       document.getElementById('tabSave').classList.toggle('active', tab === 'save');
+      document.getElementById('tabClean').classList.toggle('active', tab === 'clean');
       document.getElementById('tabDnc').classList.toggle('active', tab === 'dnc');
       document.getElementById('tabNewClient').classList.toggle('active', tab === 'newclient');
       document.getElementById('results').innerHTML = '';
@@ -702,9 +739,14 @@
         document.querySelectorAll('#sheetTabs .sheet-tab-pill').forEach((el, i) => {
           el.classList.toggle('selected', i === index);
         });
-      } else {
+      } else if (mode === 'save') {
         selectedSaveTab = index;
         document.querySelectorAll('#saveSheetTabs .sheet-tab-pill').forEach((el, i) => {
+          el.classList.toggle('selected', i === index);
+        });
+      } else if (mode === 'clean') {
+        selectedCleanTab = index;
+        document.querySelectorAll('#cleanSheetTabs .sheet-tab-pill').forEach((el, i) => {
           el.classList.toggle('selected', i === index);
         });
       }
@@ -748,17 +790,21 @@
           checkCSV = text;
           document.getElementById('checkFileName').textContent = file.name + ' (' + lineCount + ' rows)';
           updateCheckBtn();
-        } else {
+        } else if (mode === 'save') {
           saveCSV = text;
           document.getElementById('saveFileName').textContent = file.name + ' (' + lineCount + ' rows)';
           updateSaveBtn();
+        } else if (mode === 'clean') {
+          cleanCSV = text;
+          document.getElementById('cleanFileName').textContent = file.name + ' (' + lineCount + ' rows)';
+          updateCleanBtn();
         }
       };
       reader.readAsText(file);
     }
 
     // Drag and drop
-    ['checkUpload', 'saveUpload'].forEach(id => {
+    ['checkUpload', 'saveUpload', 'cleanUpload'].forEach(id => {
       const el = document.getElementById(id);
       el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('dragover'); });
       el.addEventListener('dragleave', () => el.classList.remove('dragover'));
@@ -767,7 +813,7 @@
         el.classList.remove('dragover');
         const file = e.dataTransfer.files[0];
         if (!file || !file.name.endsWith('.csv')) return;
-        const mode = id === 'checkUpload' ? 'check' : 'save';
+        const mode = id === 'checkUpload' ? 'check' : id === 'saveUpload' ? 'save' : 'clean';
         const input = document.getElementById(mode + 'File');
         const dt = new DataTransfer();
         dt.items.add(file);
@@ -1015,7 +1061,230 @@
       URL.revokeObjectURL(url);
     }
 
-    // ── Error helper ──
+    // ── Clean Apollo Sheet URL handler ──
+    let cleanSheetUrlDebounce = null;
+    function onCleanSheetUrlChange() {
+      clearTimeout(cleanSheetUrlDebounce);
+      const url = document.getElementById('cleanSheetUrl').value.trim();
+      const id = extractSpreadsheetId(url);
+      if (!id) {
+        document.getElementById('cleanSheetPreview').classList.add('hidden');
+        cleanSheetMeta = null;
+        updateCleanBtn();
+        return;
+      }
+      cleanSheetUrlDebounce = setTimeout(() => loadCleanSheetMeta(id), 500);
+    }
+
+    async function loadCleanSheetMeta(spreadsheetId) {
+      try {
+        const resp = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties`,
+          { headers: { Authorization: 'Bearer ' + accessToken } }
+        );
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.error?.message || 'Cannot access sheet');
+        }
+        const data = await resp.json();
+        cleanSheetMeta = {
+          id: spreadsheetId,
+          title: data.properties.title,
+          sheets: data.sheets.map(s => ({
+            title: s.properties.title,
+            rowCount: s.properties.gridProperties.rowCount,
+            index: s.properties.sheetId,
+          })),
+        };
+        selectedCleanTab = 0;
+        renderSheetPreview(cleanSheetMeta, 'cleanSheetPreview', 'cleanSheetTitle', 'cleanSheetRowCount', 'cleanSheetTabCount', 'cleanSheetTabs', 'clean');
+        updateCleanBtn();
+      } catch (err) {
+        document.getElementById('cleanSheetPreview').classList.add('hidden');
+        cleanSheetMeta = null;
+        updateCleanBtn();
+        showError(err.message);
+      }
+    }
+
+    function updateCleanBtn() {
+      document.getElementById('cleanBtn').disabled = !(cleanSheetMeta || cleanCSV);
+    }
+
+    // ── Apollo Column Map ──
+    const APOLLO_COLUMN_MAP = {
+      'First Name': 'first_name',
+      'Last Name': 'last_name',
+      'Email': 'email',
+      'Title': 'job_title',
+      'Seniority': 'seniority',
+      'LinkedIn Link': 'linkedin',
+      'Lead City': 'contact_city',
+      'Lead State': 'contact_state',
+      'Lead Country': 'contact_country',
+      'Company Name': 'company_name',
+      'Company Website Short': 'company_domain',
+      'Industry': 'industry',
+      'Employee Count': 'employee_count',
+      'Company LinkedIn Link': 'company_linkedin',
+    };
+
+    function cleanApolloData(csvText) {
+      const { headers, rows } = parseCSVString(csvText);
+
+      // Map Apollo columns to our standard names
+      const keepIndices = [];
+      const newHeaders = [];
+      for (const [apolloName, ourName] of Object.entries(APOLLO_COLUMN_MAP)) {
+        const idx = headers.findIndex(h => h.trim() === apolloName);
+        if (idx !== -1) {
+          keepIndices.push(idx);
+          newHeaders.push(ourName);
+        }
+      }
+
+      if (keepIndices.length === 0) {
+        throw new Error('No Apollo columns found. Make sure this is a raw ExportApollo CSV.\n\nExpected columns like: First Name, Last Name, Email, Title, Company Website Short...');
+      }
+
+      // Add phone column
+      newHeaders.push('phone');
+
+      const seenEmails = new Set();
+      const cleanRows = [];
+      let dupes = 0;
+      let noEmail = 0;
+      const colsDropped = headers.length - keepIndices.length;
+
+      // Find indices in output
+      const emailIdx = newHeaders.indexOf('email');
+      const domainIdx = newHeaders.indexOf('company_domain');
+      const linkedinIdx = newHeaders.indexOf('linkedin');
+      const companyLinkedinIdx = newHeaders.indexOf('company_linkedin');
+
+      for (const row of rows) {
+        const newRow = keepIndices.map(i => row[i] || '');
+
+        // Check email
+        const email = (newRow[emailIdx] || '').trim().toLowerCase();
+        if (!email) { noEmail++; continue; }
+        if (seenEmails.has(email)) { dupes++; continue; }
+        seenEmails.add(email);
+
+        // Clean company_domain
+        if (domainIdx !== -1 && newRow[domainIdx]) {
+          let d = newRow[domainIdx].trim().toLowerCase();
+          d = d.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+          newRow[domainIdx] = d;
+        }
+
+        // Clean linkedin - extract slug
+        if (linkedinIdx !== -1 && newRow[linkedinIdx]) {
+          const m = newRow[linkedinIdx].match(/linkedin\.com\/in\/([^/?]+)/);
+          if (m) newRow[linkedinIdx] = decodeURIComponent(m[1]);
+        }
+
+        // Clean company linkedin - extract slug
+        if (companyLinkedinIdx !== -1 && newRow[companyLinkedinIdx]) {
+          const m = newRow[companyLinkedinIdx].match(/linkedin\.com\/company\/([^/?]+)/);
+          if (m) newRow[companyLinkedinIdx] = decodeURIComponent(m[1]);
+        }
+
+        // Add empty phone
+        newRow.push('');
+        cleanRows.push(newRow);
+      }
+
+      return {
+        headers: newHeaders,
+        rows: cleanRows,
+        stats: {
+          original_rows: rows.length,
+          clean_rows: cleanRows.length,
+          dupes_removed: dupes,
+          no_email: noEmail,
+          cols_kept: keepIndices.length,
+          cols_dropped: colsDropped,
+        }
+      };
+    }
+
+    // ── Run Clean ──
+    async function runClean() {
+      const loading = document.getElementById('loading');
+      const errorBox = document.getElementById('errorBox');
+      const results = document.getElementById('results');
+      loading.classList.add('show');
+      document.getElementById('loadingText').textContent = 'Processing...';
+      errorBox.classList.add('hidden');
+      results.innerHTML = '';
+      document.getElementById('cleanBtn').disabled = true;
+
+      try {
+        let csvText = cleanCSV;
+
+        if (cleanSheetMeta && !csvText) {
+          document.getElementById('loadingText').textContent = 'Reading Google Sheet...';
+          const tabTitle = cleanSheetMeta.sheets[selectedCleanTab].title;
+          csvText = await readSheetAsCSV(cleanSheetMeta.id, tabTitle);
+        }
+
+        if (!csvText) throw new Error('No data to clean. Paste a Sheet URL or upload a CSV.');
+
+        document.getElementById('loadingText').textContent = 'Cleaning Apollo data...';
+        const result = cleanApolloData(csvText);
+        const s = result.stats;
+
+        // Create output Google Sheet if we have access token
+        let outputUrl = null;
+        if (accessToken) {
+          document.getElementById('loadingText').textContent = 'Creating clean output sheet...';
+          const sourceTitle = cleanSheetMeta ? cleanSheetMeta.title : 'Apollo Import';
+          outputUrl = await createOutputSheet(
+            sourceTitle + ' - Cleaned',
+            [{ title: 'Clean List', headers: result.headers, rows: result.rows }]
+          );
+        }
+
+        // Render results
+        let h = '<div class="stats-row">';
+        h += '<div class="result-card"><h3>Clean Leads</h3><div class="count green">' + s.clean_rows + '</div></div>';
+        h += '<div class="result-card"><h3>Dupes Removed</h3><div class="count yellow">' + s.dupes_removed + '</div></div>';
+        h += '<div class="result-card"><h3>Cols Dropped</h3><div class="count red">' + s.cols_dropped + '</div></div>';
+        h += '</div>';
+
+        h += '<div class="result-card"><h3>Summary</h3>';
+        h += '<p style="margin-top:8px;color:var(--text-muted);">' + s.original_rows + ' input rows &rarr; ' + s.clean_rows + ' clean leads</p>';
+        h += '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + s.cols_kept + ' columns kept, ' + s.cols_dropped + ' dropped. Empty Phone column added for Roy.</p>';
+        if (s.no_email > 0) h += '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + s.no_email + ' rows without email skipped.</p>';
+
+        h += '<p style="color:var(--text-muted);font-size:13px;margin-top:10px;"><strong style="color:var(--text);">Columns:</strong> ' + result.headers.join(', ') + '</p>';
+        h += '</div>';
+
+        if (outputUrl) {
+          h += '<a href="' + outputUrl + '" target="_blank" class="output-link">&#128203; Open clean list in Google Sheets</a>';
+        } else {
+          // CSV fallback
+          const csvContent = [result.headers.join(','), ...result.rows.map(r => r.map(c => {
+            const s = String(c);
+            return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s;
+          }).join(','))].join('\n');
+          h += '<div style="margin-top:12px;"><div class="download-btn" onclick="downloadCSV(window._cleanCSV,\'apollo_cleaned.csv\')" style="display:inline-block;padding:8px 16px;background:#2a2a2a;color:#8b5cf6;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:13px">Download Clean CSV</div></div>';
+          window._cleanCSV = csvContent;
+        }
+
+        results.innerHTML = h;
+        logActivity('clean_apollo', null, { input_rows: s.original_rows, clean_rows: s.clean_rows, dupes: s.dupes_removed });
+        loadStats();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+      } finally {
+        loading.classList.remove('show');
+        document.getElementById('cleanBtn').disabled = false;
+      }
+    }
+
     // ── DNC ──
     async function addToDnc() {
       const clientSlug = document.getElementById('dncClientSelect').value;
