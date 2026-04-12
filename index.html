@@ -471,9 +471,9 @@
         </div>
 
         <div class="form-group">
-          <label>Domains to block (one per line)</label>
-          <textarea id="dncDomains" rows="6" placeholder="danone.com&#10;heineken.com&#10;nestle.com" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--input-text);font-size:14px;outline:none;font-family:inherit;resize:vertical;"></textarea>
-          <div class="hint">Enter company domains, one per line. No https:// needed.</div>
+          <label>Domains to block</label>
+          <textarea id="dncDomains" rows="6" placeholder="danone.com, heineken.com, nestle.com&#10;or one per line&#10;unilever.com" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--input-text);font-size:14px;outline:none;font-family:inherit;resize:vertical;"></textarea>
+          <div class="hint">Separate with commas, newlines, or semicolons. No https:// needed.</div>
         </div>
 
         <div class="form-group">
@@ -513,6 +513,12 @@
           <label>Industry</label>
           <input type="text" id="newClientIndustry" placeholder="e.g. Supply Chain Software">
           <div class="hint">Optional. Helps with segmentation.</div>
+        </div>
+
+        <div class="form-group">
+          <label>EmailBison API Key</label>
+          <input type="text" id="newClientEbKey" placeholder="e.g. 400|aBcDeFgHiJkLmNoPqRsTuVwXyZ123456">
+          <div class="hint">Optional. Format: ID|TOKEN. Enables automatic DNC sync to EmailBison blocklist. You can add this later by updating the client in Supabase.</div>
         </div>
 
         <button class="btn" style="background:#8b5cf6;" onclick="createClient()">Create Client</button>
@@ -1109,6 +1115,11 @@
         h += '<div class="result-card"><h3>Total rows processed</h3><div class="count">' + s.total + '</div>';
         h += '<p style="color:#888;font-size:13px;margin-top:8px">Columns detected: Email=' + (s.columns_detected.email || 'none') + ', LinkedIn=' + (s.columns_detected.linkedin || 'none') + ', Domain=' + (s.columns_detected.domain || 'none') + '</p></div>';
 
+        // Always store CSVs for download + verify flow
+        window._alreadyCSV = data.already_have_csv;
+        window._needCSV = data.need_enrichment_csv;
+        window._dncCSV = data.dnc_blocked_csv;
+
         if (outputUrl) {
           h += '<a href="' + outputUrl + '" target="_blank" class="output-link">&#x1F4CA; Open results in Google Sheets</a>';
         } else {
@@ -1118,9 +1129,16 @@
           if (s.need_enrichment > 0) h += '<div class="download-btn" onclick="downloadCSV(window._needCSV,\'need_enrichment.csv\')" style="display:inline-block;padding:8px 16px;background:#2a2a2a;color:#4f8ff7;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:13px">Need Enrichment CSV</div>';
           if (s.dnc_blocked > 0) h += '<div class="download-btn" onclick="downloadCSV(window._dncCSV,\'dnc_blocked.csv\')" style="display:inline-block;padding:8px 16px;background:#2a2a2a;color:#ef4444;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:13px">DNC Blocked CSV</div>';
           h += '</div>';
-          window._alreadyCSV = data.already_have_csv;
-          window._needCSV = data.need_enrichment_csv;
-          window._dncCSV = data.dnc_blocked_csv;
+        }
+
+        // Verify Emails button — sends need_enrichment to Clean Apollo
+        if (s.need_enrichment > 0) {
+          h += '<div style="margin-top:16px;padding:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;">';
+          h += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">' + s.need_enrichment + ' contacts need enrichment. Verify their emails before sending to Roy?</p>';
+          h += '<div style="display:flex;gap:8px;">';
+          h += '<button class="btn" style="background:var(--accent);font-size:13px;padding:8px 16px;" onclick="sendToCleanApollo()">Verify Emails in Clean Apollo</button>';
+          h += '<button class="btn" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 16px;" onclick="downloadCSV(window._needCSV,\'need_enrichment.csv\')">Download CSV Instead</button>';
+          h += '</div></div>';
         }
 
         results.innerHTML = h;
@@ -1518,6 +1536,21 @@
         reader.readAsText(file);
       }
       input.value = '';
+    }
+
+    // Send "Need Enrichment" results from Check List to Clean Apollo queue
+    function sendToCleanApollo() {
+      if (!window._needCSV) return;
+      queue.push({
+        name: 'Need Enrichment (from Check List)',
+        type: 'csv',
+        sheetId: null, sheetTab: null,
+        csvText: window._needCSV,
+        stage: 'waiting',
+        pipelineData: null, mvFileId: null, bbTaskId: null, mvResults: {}, bbResults: {}, result: null,
+      });
+      switchTab('clean');
+      renderQueue();
     }
 
     function removeFromQueue(idx) {
@@ -2223,7 +2256,7 @@
       if (!clientSlug) { showError('Please select a client.'); return; }
       if (!domainsText) { showError('Please enter at least one domain.'); return; }
 
-      const domains = domainsText.split('\n').map(d => d.trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '')).filter(d => d);
+      const domains = domainsText.split(/[\n,;]+/).map(d => d.trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '')).filter(d => d && d.includes('.'));
       const names = namesText ? namesText.split('\n').map(n => n.trim()).filter(n => n) : [];
 
       if (domains.length === 0) { showError('No valid domains found.'); return; }
@@ -2245,7 +2278,9 @@
           '<h3 style="color:var(--red);">Added to DNC</h3>' +
           '<p style="margin-top:8px;color:var(--text);">' + data.added + ' domains added to ' + clientSlug + '\'s DNC list</p>' +
           (data.already_existed > 0 ? '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">' + data.already_existed + ' were already in the DNC</p>' : '');
-        if (data.emailbison_blocked > 0) {
+        if (data.emailbison_no_key) {
+          dncHtml += '<p style="color:var(--yellow);font-size:13px;margin-top:4px;">No EmailBison API key configured for this client — DNC not synced to EmailBison blocklist.</p>';
+        } else if (data.emailbison_blocked > 0) {
           dncHtml += '<p style="color:var(--green);font-size:13px;margin-top:4px;">' + data.emailbison_blocked + ' also blocked in EmailBison</p>';
         }
         if (data.emailbison_failed > 0) {
@@ -2283,6 +2318,7 @@
       const name = document.getElementById('newClientName').value.trim();
       const website = document.getElementById('newClientWebsite').value.trim();
       const industry = document.getElementById('newClientIndustry').value.trim();
+      const ebKey = document.getElementById('newClientEbKey').value.trim();
       const errorBox = document.getElementById('errorBox');
       const results = document.getElementById('results');
       errorBox.classList.add('hidden');
@@ -2290,6 +2326,12 @@
 
       if (!name) {
         showError('Client name is required.');
+        return;
+      }
+
+      // Basic EB key format check
+      if (ebKey && !/^\d+\|.{20,}$/.test(ebKey)) {
+        showError('EmailBison API key format should be: ID|TOKEN (e.g. 400|aBcDeFgH...)');
         return;
       }
 
@@ -2301,23 +2343,31 @@
         const resp = await fetch(API_BASE + '/clients', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-app-password': APP_PASSWORD },
-          body: JSON.stringify({ name, website, industry }),
+          body: JSON.stringify({ name, website, industry, emailbison_cli_key: ebKey || null }),
         });
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
 
         const c = data.client;
+        let ebStatus = '';
+        if (ebKey) {
+          ebStatus = '<p style="color:var(--green);font-size:13px;margin-top:8px;">EmailBison connected — DNC entries will auto-sync to their blocklist.</p>';
+        } else {
+          ebStatus = '<p style="color:var(--yellow);font-size:13px;margin-top:8px;">No EmailBison key provided — DNC entries won\'t sync to EmailBison. You can add the key later in Supabase (clients table, emailbison_cli_key column).</p>';
+        }
         results.innerHTML = '<div class="result-card">' +
           '<h3 style="color:#22c55e;">Client created successfully</h3>' +
-          '<p style="margin-top:8px;color:#ccc;font-size:15px;font-weight:500;">' + c.name + '</p>' +
-          '<p style="color:#888;font-size:13px;margin-top:4px;">Slug: ' + c.slug + (c.website ? ' &middot; ' + c.website : '') + (c.industry ? ' &middot; ' + c.industry : '') + '</p>' +
-          '<p style="color:#888;font-size:13px;margin-top:8px;">This client now appears in all dropdowns across the tool.</p>' +
+          '<p style="margin-top:8px;color:var(--text);font-size:15px;font-weight:500;">' + c.name + '</p>' +
+          '<p style="color:var(--text-muted);font-size:13px;margin-top:4px;">Slug: ' + c.slug + (c.website ? ' &middot; ' + c.website : '') + (c.industry ? ' &middot; ' + c.industry : '') + '</p>' +
+          ebStatus +
+          '<p style="color:var(--text-muted);font-size:13px;margin-top:8px;">This client now appears in all dropdowns across the tool.</p>' +
           '</div>';
 
         // Clear form
         document.getElementById('newClientName').value = '';
         document.getElementById('newClientWebsite').value = '';
         document.getElementById('newClientIndustry').value = '';
+        document.getElementById('newClientEbKey').value = '';
         document.getElementById('slugPreview').textContent = '';
 
         // Refresh client dropdowns
