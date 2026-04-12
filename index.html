@@ -1131,11 +1131,22 @@
           h += '</div>';
         }
 
-        // Verify Emails button — queues need_enrichment for Clean Apollo
-        if (s.need_enrichment > 0) {
+        // Queue ALL non-DNC contacts for email verification
+        // Combine "already have" + "need enrichment" into one CSV (re-verify all emails)
+        if (s.already_have + s.need_enrichment > 0) {
+          // Merge both CSVs (same headers) — skip header row of second CSV
+          const allLines = data.already_have_csv.split('\n');
+          const needLines = data.need_enrichment_csv.split('\n');
+          if (needLines.length > 1) {
+            allLines.push(...needLines.slice(1)); // skip header of need_enrichment
+          }
+          window._allNonDncCSV = allLines.join('\n');
+
           const listLabel = sheetMeta ? (sheetMeta.title + (sheetMeta.sheets.length > 1 ? ' / ' + sheetMeta.sheets[selectedSheetTab].title : '')) : 'Checked list';
+          const totalNonDnc = s.already_have + s.need_enrichment;
           h += '<div style="margin-top:16px;padding:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;">';
-          h += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">' + s.need_enrichment + ' contacts need phone enrichment. Queue for email verification first?</p>';
+          h += '<p style="color:var(--text);font-size:14px;font-weight:500;margin-bottom:4px;">Next: Verify all ' + totalNonDnc + ' emails</p>';
+          h += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">' + s.already_have + ' already have phones (will carry forward), ' + s.need_enrichment + ' need phones (for Roy). All emails get re-verified.</p>';
           h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
           h += '<button class="btn" style="background:var(--accent);font-size:13px;padding:8px 16px;" id="addToQueueBtn" onclick="queueForVerification(this, \'' + listLabel.replace(/'/g, "\\'") + '\')">Add to Verification Queue</button>';
           if (queue.length > 0) {
@@ -1304,9 +1315,24 @@
         }
       }
 
+      // Also accept already-standardized column names (from Check List output)
       if (keepIndices.length === 0) {
-        throw new Error('No Apollo columns found. Make sure this is a raw ExportApollo CSV.\n\nExpected columns like: First Name, Last Name, Email, Title, Company Website Short...');
+        const standardNames = Object.values(APOLLO_COLUMN_MAP);
+        for (const name of standardNames) {
+          const idx = headers.findIndex(h => h.trim() === name);
+          if (idx !== -1) {
+            keepIndices.push(idx);
+            newHeaders.push(name);
+          }
+        }
       }
+
+      if (keepIndices.length === 0) {
+        throw new Error('No Apollo columns found. Make sure this is a raw ExportApollo CSV or Check List output.\n\nExpected columns like: First Name, Last Name, Email, Title, Company Website Short...');
+      }
+
+      // Detect "DB Phone" column from Check List — carry forward existing phone numbers
+      const dbPhoneIdx = headers.findIndex(h => h.trim() === 'DB Phone');
 
       // Add phone column
       newHeaders.push('phone');
@@ -1315,6 +1341,7 @@
       const cleanRows = [];
       let dupes = 0;
       let noEmail = 0;
+      let phonesCarried = 0;
       const colsDropped = headers.length - keepIndices.length;
 
       // Find indices in output
@@ -1351,8 +1378,11 @@
           if (m) newRow[companyLinkedinIdx] = decodeURIComponent(m[1]);
         }
 
-        // Add empty phone
-        newRow.push('');
+        // Carry forward DB Phone if present, otherwise empty
+        const existingPhone = (dbPhoneIdx !== -1 && row[dbPhoneIdx]) ? row[dbPhoneIdx].trim() : '';
+        newRow.push(existingPhone);
+        if (existingPhone) phonesCarried++;
+
         cleanRows.push(newRow);
       }
 
@@ -1366,6 +1396,7 @@
           no_email: noEmail,
           cols_kept: keepIndices.length,
           cols_dropped: colsDropped,
+          phones_carried: phonesCarried,
         }
       };
     }
@@ -1541,14 +1572,15 @@
       input.value = '';
     }
 
-    // Queue "Need Enrichment" results from Check List for Clean Apollo verification
+    // Queue all non-DNC contacts from Check List for Clean Apollo verification
     function queueForVerification(btn, listName) {
-      if (!window._needCSV) return;
+      const csv = window._allNonDncCSV || window._needCSV;
+      if (!csv) return;
       queue.push({
-        name: listName || 'Need Enrichment',
+        name: listName || 'Checked list',
         type: 'csv',
         sheetId: null, sheetTab: null,
-        csvText: window._needCSV,
+        csvText: csv,
         stage: 'waiting',
         pipelineData: null, mvFileId: null, bbTaskId: null, mvResults: {}, bbResults: {}, result: null,
       });
@@ -1868,9 +1900,24 @@
       if (accessToken && item.verifiedRows.length > 0) {
         try {
           const headers = [...item.pipelineData.headers, 'email_verified_by', 'email_verified_date'];
-          const tabs = [
-            { title: 'Verified (' + item.verifiedRows.length + ')', headers, rows: item.verifiedRows },
-          ];
+          // Split by phone column
+          const phIdx = headers.indexOf('phone');
+          const hasPhone = [];
+          const noPhone = [];
+          for (const row of item.verifiedRows) {
+            if (phIdx !== -1 && row[phIdx] && row[phIdx].trim()) {
+              hasPhone.push(row);
+            } else {
+              noPhone.push(row);
+            }
+          }
+          const tabs = [];
+          if (hasPhone.length > 0 && noPhone.length > 0) {
+            tabs.push({ title: 'For Roy (' + noPhone.length + ')', headers, rows: noPhone });
+            tabs.push({ title: 'Have Phone (' + hasPhone.length + ')', headers, rows: hasPhone });
+          } else {
+            tabs.push({ title: 'Verified (' + item.verifiedRows.length + ')', headers, rows: item.verifiedRows });
+          }
           if (item.catchallRows && item.catchallRows.length > 0) {
             tabs.push({ title: 'Catch-all (' + item.catchallRows.length + ')', headers: item.pipelineData.headers, rows: item.catchallRows });
           }
@@ -1898,10 +1945,29 @@
         if (item.catchallRows) allCatchall.push(...item.catchallRows);
       }
 
-      // Build output tabs — no Bad tab
-      const tabs = [
-        { title: 'Verified for Roy (' + allVerified.length + ')', headers, rows: allVerified },
-      ];
+      // Split verified into "have phone" vs "need phone" based on phone column
+      const phoneIdx = headers.indexOf('phone');
+      const havePhone = [];
+      const needPhone = [];
+      for (const row of allVerified) {
+        if (phoneIdx !== -1 && row[phoneIdx] && row[phoneIdx].trim()) {
+          havePhone.push(row);
+        } else {
+          needPhone.push(row);
+        }
+      }
+
+      // Build output tabs
+      const tabs = [];
+      if (needPhone.length > 0) {
+        tabs.push({ title: 'For Roy (' + needPhone.length + ')', headers, rows: needPhone });
+      }
+      if (havePhone.length > 0) {
+        tabs.push({ title: 'Have Phone (' + havePhone.length + ')', headers, rows: havePhone });
+      }
+      if (tabs.length === 0) {
+        tabs.push({ title: 'Verified (' + allVerified.length + ')', headers, rows: allVerified });
+      }
 
       if (allCatchall.length > 0) {
         tabs.push({ title: 'Catch-all (' + allCatchall.length + ')', headers: headersNoVerify, rows: allCatchall });
@@ -1925,7 +1991,12 @@
       const totalBad = queue.reduce((s, q) => s + (q.result?.bad || 0), 0);
 
       let h = '<div class="stats-row">';
-      h += '<div class="result-card"><h3>Verified (for Roy)</h3><div class="count green">' + totalVerified + '</div></div>';
+      if (havePhone.length > 0) {
+        h += '<div class="result-card"><h3>Have Phone (ready)</h3><div class="count green">' + havePhone.length + '</div></div>';
+        h += '<div class="result-card"><h3>For Roy (need phone)</h3><div class="count blue">' + needPhone.length + '</div></div>';
+      } else {
+        h += '<div class="result-card"><h3>Verified</h3><div class="count green">' + totalVerified + '</div></div>';
+      }
       h += '<div class="result-card"><h3>Catch-all</h3><div class="count yellow">' + allCatchall.length + '</div></div>';
       h += '<div class="result-card"><h3>Bad (removed)</h3><div class="count red">' + totalBad + '</div></div>';
       h += '</div>';
