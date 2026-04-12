@@ -785,6 +785,8 @@
       document.getElementById('tabNewClient').classList.toggle('active', tab === 'newclient');
       document.getElementById('results').innerHTML = '';
       document.getElementById('errorBox').classList.add('hidden');
+      // Re-render queue when switching to Clean Apollo (items may have been added from Check tab)
+      if (tab === 'clean') renderQueue();
     }
 
     // ── Google Sheets helpers ──
