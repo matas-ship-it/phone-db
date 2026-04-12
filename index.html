@@ -1131,13 +1131,16 @@
           h += '</div>';
         }
 
-        // Verify Emails button — sends need_enrichment to Clean Apollo
+        // Verify Emails button — queues need_enrichment for Clean Apollo
         if (s.need_enrichment > 0) {
+          const listLabel = sheetMeta ? (sheetMeta.title + (sheetMeta.sheets.length > 1 ? ' / ' + sheetMeta.sheets[selectedSheetTab].title : '')) : 'Checked list';
           h += '<div style="margin-top:16px;padding:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;">';
-          h += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">' + s.need_enrichment + ' contacts need enrichment. Verify their emails before sending to Roy?</p>';
-          h += '<div style="display:flex;gap:8px;">';
-          h += '<button class="btn" style="background:var(--accent);font-size:13px;padding:8px 16px;" onclick="sendToCleanApollo()">Verify Emails in Clean Apollo</button>';
-          h += '<button class="btn" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 16px;" onclick="downloadCSV(window._needCSV,\'need_enrichment.csv\')">Download CSV Instead</button>';
+          h += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">' + s.need_enrichment + ' contacts need phone enrichment. Queue for email verification first?</p>';
+          h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
+          h += '<button class="btn" style="background:var(--accent);font-size:13px;padding:8px 16px;" id="addToQueueBtn" onclick="queueForVerification(this, \'' + listLabel.replace(/'/g, "\\'") + '\')">Add to Verification Queue</button>';
+          if (queue.length > 0) {
+            h += '<button class="btn" style="background:var(--green);font-size:13px;padding:8px 16px;" onclick="switchTab(\'clean\')">Go to Clean Apollo (' + queue.length + ' queued)</button>';
+          }
           h += '</div></div>';
         }
 
@@ -1538,19 +1541,32 @@
       input.value = '';
     }
 
-    // Send "Need Enrichment" results from Check List to Clean Apollo queue
-    function sendToCleanApollo() {
+    // Queue "Need Enrichment" results from Check List for Clean Apollo verification
+    function queueForVerification(btn, listName) {
       if (!window._needCSV) return;
       queue.push({
-        name: 'Need Enrichment (from Check List)',
+        name: listName || 'Need Enrichment',
         type: 'csv',
         sheetId: null, sheetTab: null,
         csvText: window._needCSV,
         stage: 'waiting',
         pipelineData: null, mvFileId: null, bbTaskId: null, mvResults: {}, bbResults: {}, result: null,
       });
-      switchTab('clean');
-      renderQueue();
+      // Update button to show it was added
+      btn.textContent = 'Added to queue';
+      btn.style.background = 'var(--green)';
+      btn.disabled = true;
+      // Add/update "Go to Clean Apollo" button
+      const parent = btn.parentElement;
+      let goBtn = parent.querySelector('.go-clean-btn');
+      if (!goBtn) {
+        goBtn = document.createElement('button');
+        goBtn.className = 'btn go-clean-btn';
+        goBtn.style.cssText = 'background:var(--accent);font-size:13px;padding:8px 16px;';
+        goBtn.onclick = () => switchTab('clean');
+        parent.appendChild(goBtn);
+      }
+      goBtn.textContent = 'Go to Clean Apollo (' + queue.length + ' queued)';
     }
 
     function removeFromQueue(idx) {
