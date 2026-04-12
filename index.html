@@ -1336,6 +1336,8 @@
       // Detect "DB Phone" column from Check List — carry forward existing phone numbers
       const dbPhoneIdx = headers.findIndex(h => h.trim() === 'DB Phone');
 
+      // Add linkedin_url column (full URL for Roy) before phone
+      newHeaders.push('linkedin_url');
       // Add phone column
       newHeaders.push('phone');
 
@@ -1368,10 +1370,19 @@
           newRow[domainIdx] = d;
         }
 
-        // Clean linkedin - extract slug
+        // Clean linkedin - keep full URL in linkedin_url, extract slug for DB matching
+        let fullLinkedinUrl = '';
         if (linkedinIdx !== -1 && newRow[linkedinIdx]) {
-          const m = newRow[linkedinIdx].match(/linkedin\.com\/in\/([^/?]+)/);
-          if (m) newRow[linkedinIdx] = decodeURIComponent(m[1]);
+          const raw = newRow[linkedinIdx].trim();
+          // If it's already a full URL, preserve it; if it's a slug, build the URL
+          if (raw.includes('linkedin.com/in/')) {
+            fullLinkedinUrl = raw.startsWith('http') ? raw : 'https://' + raw;
+            const m = raw.match(/linkedin\.com\/in\/([^/?]+)/);
+            if (m) newRow[linkedinIdx] = decodeURIComponent(m[1]);
+          } else if (raw && !raw.includes('/')) {
+            // Already a slug (from Check List output)
+            fullLinkedinUrl = 'https://www.linkedin.com/in/' + raw;
+          }
         }
 
         // Clean company linkedin - extract slug
@@ -1380,7 +1391,8 @@
           if (m) newRow[companyLinkedinIdx] = decodeURIComponent(m[1]);
         }
 
-        // Carry forward DB Phone if present, otherwise empty
+        // Add full LinkedIn URL + carry forward DB Phone
+        newRow.push(fullLinkedinUrl);
         const existingPhone = (dbPhoneIdx !== -1 && row[dbPhoneIdx]) ? row[dbPhoneIdx].trim() : '';
         newRow.push(existingPhone);
         if (existingPhone) phonesCarried++;
