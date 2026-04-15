@@ -1034,6 +1034,17 @@
         });
       }
 
+      // Unlock: set "anyone with the link can edit" so the whole team can open
+      try {
+        await fetch(`https://www.googleapis.com/drive/v3/files/${newId}/permissions`, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'anyone', role: 'writer' }),
+        });
+      } catch (e) {
+        console.warn('Failed to set anyone-with-link permission:', e);
+      }
+
       return created.spreadsheetUrl;
     }
 
